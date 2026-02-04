@@ -1,27 +1,19 @@
 //for starting the database connection and the web server.
 
-import dotenv from 'dotenv';
-dotenv.config({ path: '.env.development' });
-import mongoose from 'mongoose';
-import app from './app.js';
+import app from './app.js'
+import { connectDB } from './config/db.js'
+import { env } from './config/env.js'
 
-const PORT = process.env.PORT || 5500
+connectDB();
 
-const start = async () => {
-    //CHECK FOR CRITICAL ENV VARIABLES EARLY
-    if(!process.env.JWT_SECRET || !process.env.DATABASE_URI){
-        throw new Error('JWT_SECRET and MONGO_URI must be defined');
-    }
-try {
-    await mongoose.connect(process.env.DATABASE_URI);
-    console.log('🍃 Connected to MongoDB');
+const PORT = env.development.PORT;
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Auth Service listening on port ${PORT}`);
-    });
-  } catch (err) {
-    console.error('Database connection failed:', err);
-  }
-}
+const server = app.listen(PORT, () => {
+  console.log(`Server running in ${env.development.NODE_ENV} mode on port ${PORT}`)
+})
 
-start();
+process.on('unhandledRejection', (err, promise ) => {
+  console.log(`Error: ${err.message}`);
+  server.close(() => process.exit(1));
+});
+

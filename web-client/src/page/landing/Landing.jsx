@@ -20,6 +20,7 @@ import {
   Mail,
   Navigation
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const Landing = () => {
   useEffect(() => {
@@ -73,12 +74,14 @@ const Landing = () => {
 
           {/* CTA Buttons */}
           <div className="flex justify-center gap-4 mb-6">
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors shadow-md">
-              Order Water
-            </button>
-            <button className="bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-300 px-8 py-3 rounded-lg font-semibold text-lg transition-colors">
-              Track Order
-            </button>
+            <Link to="/auth">
+                <button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-colors shadow-md">
+                Order Water
+                </button>
+            </Link>
+                <button className="bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-300 px-8 py-3 rounded-lg font-semibold text-lg transition-colors">
+                Track Order
+                </button>
           </div>
 
           {/* Admin Login Link */}

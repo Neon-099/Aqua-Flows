@@ -1,19 +1,19 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
-import authRoutes from './routes/authRoutes.js';
+import cors from 'cors'
+import helmet from 'helmet'
+import router from './routes/auth.route.js';
+import { errorHandler } from './middlewares/error.middleware.js';
 
 const app = express();
 
-//STANDARD MIDDLEWARES
-app.use(express.json());    //PARSES INCOMING JSON
-app.use(cookieParser());  //TO ALLOWS US TO READ req.cookies
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors());
+app.use(helmet()); //TO PROTECT THE HTTP RESPONSE OF A HEADER
 
-//ROUTES
-app.use('/api/auth', authRoutes);
+app.use('/api/v1/auth', router)
 
-//404 HANDLER
-app.use((req, res) => {
-    res.status(404).json({message: 'Routes not found'});
-});
+app.use(errorHandler);
 
 export default app;
