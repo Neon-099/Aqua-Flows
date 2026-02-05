@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Droplet, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Droplet, Mail, Lock, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthProvider'
 
 const Auth = () => {
+
+  const { login, register } = useAuth();
+  const navigate = useNavigate();
+
+  const [error, setError ] = useState('');
+  const [loading, setLoading ] = useState(false);
+  
   const [activeTab, setActiveTab] = useState('signin');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -10,7 +18,9 @@ const Auth = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    name: ''
+    name: '',
+    phone: '',
+    location: ''
   });
 
   useEffect(() => {
@@ -34,15 +44,48 @@ const Auth = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle form submission here
-    console.log('Form submitted:', formData);
+    setError('');
+    setLoading(true);
+
+    try {
+      if(activeTab === 'signup'){
+        if(formData.password !== formData.confirmPassword){
+          setError('Passwords do not match');
+          setLoading(true);
+          return;
+        }
+        const res = await register(formData);
+        if(res.success){
+          navigate('/auth');
+        }
+        else {
+          setError(res.error || 'Registration failed');
+        }
+      }
+      //LOGIN
+      else {
+        const res = await login(formData.email, formData.password);
+        if(res.status){
+          navigate('/home')
+        }
+        else {
+          setError(res.error || 'Log in failed');
+        }
+      }
+    }
+    catch (error){
+      setError('An unexpected error occurred');
+    }
+    finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen w-screen font-sans text-slate-900 bg-white m-0 p-0 flex">
-      
+        
       {/* Left Section - Informational Panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-b from-blue-50 to-white flex-col p-12 relative">
         {/* Logo */}
@@ -123,6 +166,13 @@ const Auth = () => {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
+             {error && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm flex items-center gap-2">
+                <AlertCircle size={16} />
+                <span>{error}</span>
+              </div>
+            )} 
+
             {/* Name field for Sign Up */}
             {activeTab === 'signup' && (
               <div className="relative">
@@ -151,7 +201,7 @@ const Auth = () => {
                 name="email"
                 value={formData.email}
                 onChange={handleInputChange}
-                placeholder="name@email.com or 09XX-XXX-XXXX"
+                placeholder="name@email.com"
                 className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
                 required
               />
@@ -202,6 +252,26 @@ const Auth = () => {
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
+
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Lock size={20} />
+                </div>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  placeholder="Confirm Password"
+                  className="w-full pl-12 pr-12 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                  required={activeTab === 'signup'}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
             )}
 
@@ -226,9 +296,10 @@ const Auth = () => {
             {/* Submit Button */}
             <button
               type="submit"
+              disabled={loading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors shadow-md"
             >
-              {activeTab === 'signin' ? 'Sign In' : 'Sign Up'}
+              {loading ? 'Please wait...' : (activeTab === 'signin' ? 'Sign In' : 'Sign Up')}
             </button>
 
             {/* Security Message */}
