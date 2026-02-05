@@ -9,6 +9,7 @@ import { validateRegister, validateLogin } from '../validators/auth.validator.js
 
 const router = express.Router();
 
+//AUTH URI 
 router.post('/signup', authLimiter, validateRegister, register);
 router.post('/signin', authLimiter, validateLogin, login);
 router.get('/logout', logout);
