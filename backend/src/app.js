@@ -1,3 +1,5 @@
+
+
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors'
@@ -12,6 +14,7 @@ app.use(cookieParser());
 app.use(cors());
 app.use(helmet()); //TO PROTECT THE HTTP RESPONSE OF A HEADER
 
+//MAIN ROUTER URI
 app.use('/api/v1/auth', router)
 
 app.use(errorHandler);
