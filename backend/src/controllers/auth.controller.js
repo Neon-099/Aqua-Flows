@@ -2,10 +2,13 @@
 import * as authService from '../services/auth.service.js';
 import { MESSAGES } from '../constants/messages.js';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: isProd,
+    // Cross-site cookies in production (web + mobile) require SameSite=None and Secure
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
 };
 
@@ -70,5 +73,5 @@ export const resetPassword = async (req, res, next) => {
 };
 
 export const getMe = async (req, res) => {
-    res.status(200).json({ success: true, data: req.user });
+    res.status(200).json({ success: true, user: req.user });
 }
