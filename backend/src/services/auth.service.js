@@ -21,8 +21,16 @@ export const registerUser = async (email, password) => {
 
 export const loginUser = async (email, password) => {
   const user = await User.findOne({ email }).select('+password');
-  if (!user || !(await user.matchPassword(password))) {
-    throw new Error('Invalid credentials');
+  if (!user) {
+    const err = new Error('Email not found');
+    err.statusCode = 401;
+    throw err;
+  }
+  const passwordMatches = await user.matchPassword(password);
+  if (!passwordMatches) {
+    const err = new Error('Incorrect password');
+    err.statusCode = 401;
+    throw err;
   }
   return {
     _id: user._id,
@@ -46,16 +54,18 @@ export const refreshUserToken = async (token) => {
 export const forgotPassword = async (email) => {
   const user = await User.findOne({ email });
   if (!user) {
-    throw new Error('User not found');
+    const err = new Error('Email not found');
+    err.statusCode = 404;
+    throw err;
   }
   const resetToken = user.getResetPasswordToken();
   await user.save();
 
-  const resetUrl = `${env.CLIENT_URL}/reset-password/${resetToken}`;
   const message = `
     <h1>You have requested a password reset</h1>
-    <p>Please go to this link to reset your password:</p>
-    <a href=${resetUrl} clicktracking=off>${resetUrl}</a>
+    <p>Use this reset code to create a new password:</p>
+    <p style="font-size: 22px; font-weight: 700; letter-spacing: 2px;">${resetToken}</p>
+    <p>This code expires in 10 minutes.</p>
   `;
 
   try {
