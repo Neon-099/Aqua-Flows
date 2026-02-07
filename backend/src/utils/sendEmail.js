@@ -1,26 +1,45 @@
 // e:\Aquaflow\backend\src\utils\sendEmail.js
 
-
-import sgMail from '@sendgrid/mail';
 import { env } from '../config/env.js';
 
-sgMail.setApiKey(env.SENDGRID_API_KEY);
-
 export const sendEmail = async (options) => {
-  const msg = {
-    to: options.email,
-    from: env.EMAIL_FROM,
+  if (!env.BREVO_API_KEY || !env.BREVO_SENDER_EMAIL) {
+    throw new Error('Brevo is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.');
+  }
+
+  const payload = {
+    sender: {
+      name: env.BREVO_SENDER_NAME || 'AquaFlow',
+      email: env.BREVO_SENDER_EMAIL,
+    },
+    to: [
+      {
+        email: options.email,
+        name: options.name || options.email,
+      },
+    ],
     subject: options.subject,
-    html: options.message,
+    htmlContent: options.message,
   };
 
   try {
-    await sgMail.send(msg);
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'content-type': 'application/json',
+        'api-key': env.BREVO_API_KEY,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error('Brevo error:', res.status, body);
+      throw new Error('Email could not be sent');
+    }
   } catch (error) {
     console.error(error);
-    if (error.response) {
-      console.error(error.response.body);
-    }
     throw new Error('Email could not be sent');
   }
 };
