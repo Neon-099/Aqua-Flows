@@ -3,7 +3,11 @@ import { createContext, useContext, useState, useEffect } from "react";
 const AuthContext = createContext();
 
 export const useAuth = () => {
-    return useContext(AuthContext);
+   const context = useContext(AuthContext);
+    if (context === undefined) {
+        throw new Error("useAuth must be used within an AuthProvider");
+    }
+    return context;
 }
 
 export const AuthProvider = ({ children} ) => {
@@ -14,7 +18,11 @@ export const AuthProvider = ({ children} ) => {
     useEffect(() => {
         const checkUser = async() => {
             try {
-                const res = await fetch('/api/v1/auth/me')
+                const res = await fetch('/api/v1/auth/me', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json'},
+                    credentials: 'include'
+                })
                 if(res.ok){
                     const data = await res.json();
                     setUser(data.user);
@@ -36,6 +44,7 @@ const login = async ( email, password ) => {
         const res = await fetch('/api/v1/auth/signin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json'},
+            credentials: 'include',
             body: JSON.stringify({ email, password }),
         });
         const data = await res.json();
@@ -55,6 +64,7 @@ const register = async (userData) => {
         const res = await fetch('/api/v1/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json'},
+        credentials: 'include',
         body: JSON.stringify(userData)
     })
         const data = await res.json();
@@ -62,7 +72,7 @@ const register = async (userData) => {
             setUser(data.user);
             return{success: true};
         }
-        return {success: false, error: data.message};
+        return {success: false, error: data.error};
     }
     catch (error) {
         return {success: false, error: error.message};
@@ -72,7 +82,7 @@ const register = async (userData) => {
 
 const logout = async () => {
     try {
-        await fetch ('/api/v1/auth/logout', { method: 'POST'})
+        await fetch ('/api/v1/auth/logout', { method: 'POST', credentials: 'include' })
         setUser(null);
     }
     catch(error){
@@ -80,10 +90,48 @@ const logout = async () => {
     }
 }
 
+const forgotPassword = async (email) => {
+    try {
+        const res = await fetch('/api/v1/auth/forgotpassword', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            return { success: true, message: data.message };
+        }
+        return { success: false, error: data.error || data.message };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+const resetPassword = async (resetToken, password) => {
+    try {
+        const res = await fetch(`/api/v1/auth/resetpassword/${resetToken}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            return { success: true, message: data.message };
+        }
+        return { success: false, error: data.error || data.message };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
 const value = {
     user,
     login,
     register,
+    forgotPassword,
+    resetPassword,
     logout,
     loading
 }
