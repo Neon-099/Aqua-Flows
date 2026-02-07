@@ -47,12 +47,16 @@ const login = async ( email, password ) => {
             credentials: 'include',
             body: JSON.stringify({ email, password }),
         });
+        //LIMITATION RATE FOR AUTH PAGE
+        if (res.status === 429) {
+            return { success: false, error: "Too many attempts. Please try again later after 15 minutes." };
+        }
         const data = await res.json();
         if(res.ok){
             setUser(data.user);
             return { success: true};
         }
-        return {success: false, error: data.message};
+        return {success: false, error: data.error || data.message};
     }
     catch (error){
         return { success: false, error: error.message};
@@ -72,7 +76,7 @@ const register = async (userData) => {
             setUser(data.user);
             return{success: true};
         }
-        return {success: false, error: data.error};
+        return {success: false, error: data.error || data.message};
     }
     catch (error) {
         return {success: false, error: error.message};
@@ -102,7 +106,9 @@ const forgotPassword = async (email) => {
         if (res.ok) {
             return { success: true, message: data.message };
         }
-        return { success: false, error: data.error || data.message };
+        
+        return { success: false, error: data.error || 'Couldnt find email' };
+
     } catch (error) {
         return { success: false, error: error.message };
     }
@@ -142,4 +148,3 @@ return (
     </AuthContext.Provider>
     )   
 }
-
