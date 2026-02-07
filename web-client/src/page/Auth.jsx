@@ -23,6 +23,9 @@ const Auth = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState('');
   const [resetMessage, setResetMessage] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [closeWarning, setCloseWarning] = useState(false);
+  const [resetCooldown, setResetCooldown] = useState(0);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -80,7 +83,7 @@ const Auth = () => {
           navigate('/home')
         }
         else {
-          setError(res.error || 'Log in failed');
+          setError(res.error || 'Login failed');
         }
       }
     }
@@ -100,11 +103,20 @@ const Auth = () => {
     setResetConfirm('');
     setResetError('');
     setResetMessage('');
+    setShowResetPassword(false);
+    setCloseWarning(false);
+    setResetCooldown(0);
     setShowResetModal(true);
   };
 
   const closeResetModal = () => {
+    if (!closeWarning) {
+      setCloseWarning(true);
+      return;
+    }
     setShowResetModal(false);
+    setCloseWarning(false);
+    setResetCooldown(0);
   };
 
   const handleRequestReset = async (e) => {
@@ -117,6 +129,7 @@ const Auth = () => {
       if (res.success) {
         setResetMessage(res.message || 'Reset instructions sent. Check your email for the code.');
         setResetStep('reset');
+        setResetCooldown(10 * 60);
       } else {
         setResetError(res.error || 'Could not send reset email.');
       }
@@ -142,6 +155,8 @@ const Auth = () => {
         setResetToken('');
         setResetPasswordValue('');
         setResetConfirm('');
+        setResetCooldown(0);
+        setShowResetModal(false)
       } else {
         setResetError(res.error || 'Reset failed.');
       }
@@ -149,6 +164,14 @@ const Auth = () => {
       setResetLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (resetCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResetCooldown(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resetCooldown]);
 
   return (
     <div className="min-h-screen w-screen font-sans text-slate-900 bg-white m-0 p-0 flex">
@@ -419,6 +442,11 @@ const Auth = () => {
                   {resetMessage}
                 </div>
               )}
+              {closeWarning && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-sm">
+                  You cant change your password once you close this form.
+                </div>
+              )}
 
               {resetStep === 'request' && (
                 <form onSubmit={handleRequestReset} className="space-y-4">
@@ -440,11 +468,17 @@ const Auth = () => {
                   </div>
                   <button
                     type="submit"
-                    disabled={resetLoading}
+                    disabled={resetLoading || resetCooldown > 0}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors shadow-md"
                   >
-                    {resetLoading ? 'Sending...' : 'Send Reset Code'}
+                    {resetLoading ? 'Sending...' : resetCooldown > 0 ? 'Please wait...' : 'Send Reset Code'}
                   </button>
+                  {resetCooldown > 0 && (
+                    <p className="text-xs text-slate-500 text-center">
+                      You can request a new code in {String(Math.floor(resetCooldown / 60)).padStart(2, '0')}:
+                      {String(resetCooldown % 60).padStart(2, '0')}
+                    </p>
+                  )}
                 </form>
               )}
 
@@ -453,30 +487,68 @@ const Auth = () => {
                   <p className="text-sm text-slate-600">
                     Paste the reset code from your email and choose a new password.
                   </p>
+                  {resetCooldown > 0 && (
+                    <p className="text-xs text-slate-500 text-center">
+                      You can request a new code in {String(Math.floor(resetCooldown / 60)).padStart(2, '0')}:
+                      {String(resetCooldown % 60).padStart(2, '0')}
+                    </p>
+                  )}
                   <input
-                    type="text"
+                    type="type"
                     value={resetToken}
                     onChange={(e) => setResetToken(e.target.value)}
                     placeholder="Reset code"
                     className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
                     required
                   />
-                  <input
-                    type="password"
-                    value={resetPasswordValue}
-                    onChange={(e) => setResetPasswordValue(e.target.value)}
-                    placeholder="New password"
-                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
-                    required
-                  />
-                  <input
-                    type="password"
-                    value={resetConfirm}
-                    onChange={(e) => setResetConfirm(e.target.value)}
-                    placeholder="Confirm new password"
-                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showResetPassword ? 'text' : 'password'}
+                      value={resetPasswordValue}
+                      onChange={(e) => setResetPasswordValue(e.target.value)}
+                      placeholder="New password"
+                      className="w-full pr-12 px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPassword(!showResetPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showResetPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showResetPassword ? 'text' : 'password'}
+                      value={resetConfirm}
+                      onChange={(e) => setResetConfirm(e.target.value)}
+                      placeholder="Confirm new password"
+                      className="w-full pr-12 px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowResetPassword(!showResetPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showResetPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-6 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+                <button
+                    type="submit"
+                    disabled={resetLoading || resetCooldown > 0}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors shadow-md"
+                  >
+                    {resetLoading ? 'Sending...' : resetCooldown > 0 ? 'Please wait...' : 'Send Reset Code'}
+                  </button>
                   <button
                     type="submit"
                     disabled={resetLoading}
