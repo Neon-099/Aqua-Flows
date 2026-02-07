@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Droplet, Mail, Lock, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Droplet, Mail, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, LocationEdit, PhoneCallIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthProvider'
+import {useAuth } from '../contexts/AuthProvider'
 
 const Auth = () => {
 
-  const { login, register } = useAuth();
+  const { login, register, forgotPassword, resetPassword } = useAuth();
   const navigate = useNavigate();
 
   const [error, setError ] = useState('');
@@ -14,13 +14,22 @@ const Auth = () => {
   const [activeTab, setActiveTab] = useState('signin');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetStep, setResetStep] = useState('request');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     confirmPassword: '',
     name: '',
-    phone: '',
-    location: ''
+    // phone: '',
+    // location: ''
   });
 
   useEffect(() => {
@@ -58,7 +67,7 @@ const Auth = () => {
         }
         const res = await register(formData);
         if(res.success){
-          navigate('/auth');
+          setActiveTab('signin')
         }
         else {
           setError(res.error || 'Registration failed');
@@ -67,7 +76,7 @@ const Auth = () => {
       //LOGIN
       else {
         const res = await login(formData.email, formData.password);
-        if(res.status){
+        if(res.success){
           navigate('/home')
         }
         else {
@@ -80,6 +89,64 @@ const Auth = () => {
     }
     finally {
       setLoading(false);
+    }
+  };
+
+  const openResetModal = () => {
+    setResetStep('request');
+    setResetEmail(formData.email || '');
+    setResetToken('');
+    setResetPasswordValue('');
+    setResetConfirm('');
+    setResetError('');
+    setResetMessage('');
+    setShowResetModal(true);
+  };
+
+  const closeResetModal = () => {
+    setShowResetModal(false);
+  };
+
+  const handleRequestReset = async (e) => {
+    e.preventDefault();
+    setResetError('');
+    setResetMessage('');
+    setResetLoading(true);
+    try {
+      const res = await forgotPassword(resetEmail);
+      if (res.success) {
+        setResetMessage(res.message || 'Reset instructions sent. Check your email for the code.');
+        setResetStep('reset');
+      } else {
+        setResetError(res.error || 'Could not send reset email.');
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setResetError('');
+    setResetMessage('');
+    if (resetPasswordValue !== resetConfirm) {
+      setResetError('Passwords do not match');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await resetPassword(resetToken, resetPasswordValue);
+      if (res.success) {
+        setResetMessage(res.message || 'Password reset successful. You can now sign in.');
+        setResetStep('request');
+        setResetToken('');
+        setResetPasswordValue('');
+        setResetConfirm('');
+      } else {
+        setResetError(res.error || 'Reset failed.');
+      }
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -233,7 +300,7 @@ const Auth = () => {
             {/* Confirm Password for Sign Up */}
             {activeTab === 'signup' && (
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                <div className="absolute left-4 top-6 -translate-y-1/2 text-slate-400">
                   <Lock size={20} />
                 </div>
                 <input
@@ -248,30 +315,34 @@ const Auth = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-4 top-6 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
 
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Lock size={20} />
-                </div>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  placeholder="Confirm Password"
-                  className="w-full pl-12 pr-12 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
-                  required={activeTab === 'signup'}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
+
+                {/* <div className='flex flex-row mt-6'>
+                  <div className="absolute left-4 top-25 -translate-y-1/2 text-slate-400">
+                    <PhoneCallIcon size={20} />
+                  </div>
+                  <input
+                    name="phone_number"
+                    onChange={handleInputChange}
+                    placeholder="Phone Number"
+                    className="w-full pl-12 pr-12 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                    required={activeTab === 'signup'}
+                  />
+                  <div className="absolute left-60 top-25 -translate-y-1/2 text-slate-400">
+                    <LocationEdit size={20} />
+                  </div>
+                  <input
+                    name="location"
+                    onChange={handleInputChange}
+                    placeholder="Location"
+                    className="w-full ml-5 pl-12 pr-12 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                    required={activeTab === 'signup'}
+                  />
+                </div> */}
               </div>
             )}
 
@@ -287,9 +358,13 @@ const Auth = () => {
                 <span className="text-slate-600 font-medium">Remember me</span>
               </label>
               {activeTab === 'signin' && (
-                <a href="#" className="text-blue-600 hover:text-blue-700 font-medium text-sm">
+                <button
+                  type="button"
+                  onClick={openResetModal}
+                  className="text-blue-600 hover:text-blue-700 font-medium text-sm"
+                >
                   Forgot Password?
-                </a>
+                </button>
               )}
             </div>
 
@@ -318,6 +393,103 @@ const Auth = () => {
           </div>
         </div>
       </div>
+
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="text-lg font-semibold text-slate-900">Reset Password</h3>
+              <button
+                type="button"
+                onClick={closeResetModal}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              {resetError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm">
+                  {resetError}
+                </div>
+              )}
+              {resetMessage && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
+                  {resetMessage}
+                </div>
+              )}
+
+              {resetStep === 'request' && (
+                <form onSubmit={handleRequestReset} className="space-y-4">
+                  <p className="text-sm text-slate-600">
+                    Enter your email and we will send you a reset code.
+                  </p>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Mail size={18} />
+                    </div>
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="name@email.com"
+                      className="w-full pl-11 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors shadow-md"
+                  >
+                    {resetLoading ? 'Sending...' : 'Send Reset Code'}
+                  </button>
+                </form>
+              )}
+
+              {resetStep === 'reset' && (
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  <p className="text-sm text-slate-600">
+                    Paste the reset code from your email and choose a new password.
+                  </p>
+                  <input
+                    type="text"
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="Reset code"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                    required
+                  />
+                  <input
+                    type="password"
+                    value={resetPasswordValue}
+                    onChange={(e) => setResetPasswordValue(e.target.value)}
+                    placeholder="New password"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                    required
+                  />
+                  <input
+                    type="password"
+                    value={resetConfirm}
+                    onChange={(e) => setResetConfirm(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors shadow-md"
+                  >
+                    {resetLoading ? 'Resetting...' : 'Reset Password'}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
