@@ -33,8 +33,9 @@ export const env = {
   JWT_EXPIRE: process.env.JWT_EXPIRES_IN || '1h',
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
   JWT_REFRESH_EXPIRE: process.env.JWT_REFRESH_EXPIRE || '7d',
-  SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
-  EMAIL_FROM: process.env.SENDGRID_FROM_EMAIL || process.env.EMAIL_FROM,
+  BREVO_API_KEY: process.env.BREVO_API_KEY,
+  BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL,
+  BREVO_SENDER_NAME: process.env.BREVO_SENDER_NAME,
   NODE_ENV: process.env.NODE_ENV || 'development',
   CLIENT_URL: process.env.CLIENT_URL
 };
