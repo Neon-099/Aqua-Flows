@@ -6,6 +6,7 @@ import Landing from './page/landing/Landing'
 import Home from './page/Home'
 import Message from './page/Message'
 import Delivery from './page/Delivery'
+import Order from './page/Order'
 import Auth from './page/Auth'
 import ContactUs from './page/landing/ContactUs'
 import { AuthProvider } from './contexts/AuthProvider'
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')).render(
             <Route path='/auth' element={<Auth />} />
             <Route path='/contact' element={<ContactUs />} />
             <Route path='/home' element={<Home />} />
+            <Route path='/orders' element={<Order />} />
             <Route path='/messages' element={<Message />} />
             <Route path='/delivery' element={<Delivery />} />
           </Routes>

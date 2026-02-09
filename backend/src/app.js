@@ -36,6 +36,11 @@ app.use(cors({
 }));
 app.use(helmet()); //TO PROTECT THE HTTP RESPONSE OF A HEADER
 
+// Health check
+app.get('/health', (req, res) => {
+  res.status(200).json({ success: true, status: 'ok' });
+});
+
 //MAIN ROUTER URI
 app.use('/api/v1/auth', router)
 

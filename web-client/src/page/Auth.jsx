@@ -31,8 +31,8 @@ const Auth = () => {
     password: '',
     confirmPassword: '',
     name: '',
-    // phone: '',
-    // location: ''
+    phone: '',
+    address: ''
   });
 
   useEffect(() => {
@@ -343,29 +343,41 @@ const Auth = () => {
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
 
-
-                {/* <div className='flex flex-row mt-6'>
-                  <div className="absolute left-4 top-25 -translate-y-1/2 text-slate-400">
+                {/*PHONE NUMBER & ADDRESS*/}
+                <div className="relative mt-4">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                     <PhoneCallIcon size={20} />
                   </div>
                   <input
-                    name="phone_number"
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
                     onChange={handleInputChange}
                     placeholder="Phone Number"
-                    className="w-full pl-12 pr-12 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                    className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
                     required={activeTab === 'signup'}
                   />
-                  <div className="absolute left-60 top-25 -translate-y-1/2 text-slate-400">
+                </div>
+
+                <div className="relative mt-4">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                     <LocationEdit size={20} />
                   </div>
-                  <input
-                    name="location"
+                  <select
+                    name="address"
+                    value={formData.address}
                     onChange={handleInputChange}
-                    placeholder="Location"
-                    className="w-full ml-5 pl-12 pr-12 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
+                    className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium bg-white"
                     required={activeTab === 'signup'}
-                  />
-                </div> */}
+                  >
+                    <option value="">Select delivery area</option>
+                    <option value="Downtown">Downtown</option>
+                    <option value="Uptown">Uptown</option>
+                    <option value="Riverside">Riverside</option>
+                    <option value="West End">West End</option>
+                    <option value="Campus">Campus</option>
+                  </select>
+                </div>
               </div>
             )}
 
