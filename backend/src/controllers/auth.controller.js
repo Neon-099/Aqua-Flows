@@ -14,10 +14,14 @@ const cookieOptions = {
 
 export const register = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    const data = await authService.registerUser(email, password);
+    const { email, password, name, address, phone } = req.body;
+    const data = await authService.registerUser(email, password, name, address, phone);
     res.cookie('refreshToken', data.refreshToken, cookieOptions);
-    res.status(201).json({ success: true, token: data.accessToken, user: { id: data._id, email: data.email } });
+    res.status(201).json({
+      success: true,
+      token: data.accessToken,
+      user: { id: data._id, email: data.email, name: data.name, address: data.address, phone: data.phone }
+    });
   } catch (error) {
     next(error);
   }
@@ -28,7 +32,11 @@ export const login = async (req, res, next) => {
     const { email, password } = req.body;
     const data = await authService.loginUser(email, password);
     res.cookie('refreshToken', data.refreshToken, cookieOptions);
-    res.status(200).json({ success: true, token: data.accessToken, user: { id: data._id, email: data.email } });
+    res.status(200).json({
+      success: true,
+      token: data.accessToken,
+      user: { id: data._id, email: data.email, name: data.name, address: data.address, phone: data.phone }
+    });
   } catch (error) {
     next(error);
   }
