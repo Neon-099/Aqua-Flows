@@ -2,8 +2,14 @@
 import mongoose from 'mongoose';
 import argon2 from 'argon2';
 import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
+import { USER_ROLE } from '../constants/order.constants.js';
 
 const userSchema = new mongoose.Schema({
+  _id: {
+    type: String,
+    default: uuidv4,
+  },
   email: {
     type: String,
     required: [true, 'Please provide an email'],
@@ -21,14 +27,29 @@ const userSchema = new mongoose.Schema({
     minlength: 6,
     select: false,
   },
+  name: {
+    type: String,
+    required: [true, 'Please provide a name'],
+    trim: true,
+  },
+  address: {
+    type: String,
+    required: [true, 'Please select an address option'],
+    trim: true,
+  },
+  phone: {
+    type: String,
+    required: [true, 'Please provide a phone number'],
+    trim: true,
+  },
   role: {
     type: String,
-    enum: ['user', 'rider', 'staff', 'admin'],
-    default: 'user',
+    enum: Object.values(USER_ROLE),
+    default: USER_ROLE.USER,
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
-}, { timestamps: true });
+}, { timestamps: true, versionKey: '__v', optimisticConcurrency: true });
 
 userSchema.pre('save', async function () {
   if (!this.isModified('password')) return;
