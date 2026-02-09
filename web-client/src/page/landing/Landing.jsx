@@ -308,7 +308,7 @@ const Landing = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <Mail size={16} />
-                  <span>hello@aquaflow.com</span>
+                  <span>team@aquaflow.com</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Navigation size={16} className="mt-1" />
