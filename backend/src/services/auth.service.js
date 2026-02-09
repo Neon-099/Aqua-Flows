@@ -5,15 +5,18 @@ import { sendEmail } from '../utils/sendEmail.js';
 import crypto from 'crypto';
 import { env } from '../config/env.js';
 
-export const registerUser = async (email, password) => {
+export const registerUser = async (email, password, name, address, phone) => {
   const userExists = await User.findOne({ email });
   if (userExists) {
     throw new Error('User already exists');
   }
-  const user = await User.create({ email, password });
+  const user = await User.create({ email, password, name, address, phone });
   return {
     _id: user._id,
     email: user.email,
+    name: user.name,
+    address: user.address,
+    phone: user.phone,
     accessToken: generateAccessToken(user._id),
     refreshToken: generateRefreshToken(user._id),
   };
@@ -35,6 +38,9 @@ export const loginUser = async (email, password) => {
   return {
     _id: user._id,
     email: user.email,
+    name: user.name,
+    address: user.address,
+    phone: user.phone,
     accessToken: generateAccessToken(user._id),
     refreshToken: generateRefreshToken(user._id),
   };
