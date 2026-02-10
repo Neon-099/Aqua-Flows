@@ -9,6 +9,8 @@ import Delivery from './page/Delivery'
 import Order from './page/Order'
 import Auth from './page/Auth'
 import ContactUs from './page/landing/ContactUs'
+import StaffOrders from './page/staff/StaffOrders'
+import RiderOrders from './page/RiderOrders'
 import { AuthProvider } from './contexts/AuthProvider'
 
 
@@ -24,6 +26,8 @@ createRoot(document.getElementById('root')).render(
             <Route path='/orders' element={<Order />} />
             <Route path='/messages' element={<Message />} />
             <Route path='/delivery' element={<Delivery />} />
+            <Route path='/staff/orders' element={<StaffOrders />} />
+            <Route path='/rider/orders' element={<RiderOrders />} />
           </Routes>
         </Router>
     </AuthProvider>
