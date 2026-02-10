@@ -1,7 +1,7 @@
 // e:\Aquaflow\backend\src\models\Order.model.js
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import { ORDER_STATUS, ORDER_PAYMENT_STATUS, PAYMENT_METHOD } from '../constants/order.constants.js';
+import { ORDER_STATUS, ORDER_PAYMENT_STATUS, PAYMENT_METHOD, GALLON_TYPE } from '../constants/order.constants.js';
 
 const orderSchema = new mongoose.Schema({
   _id: {
@@ -31,6 +31,11 @@ const orderSchema = new mongoose.Schema({
     required: true,
     min: 1,
   },
+  gallon_type: {
+    type: String,
+    enum: Object.values(GALLON_TYPE),
+    required: true,
+  },
   total_amount: {
     type: Number,
     required: true,
@@ -50,6 +55,10 @@ const orderSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  eta_minutes_min: { type: Number, default: null },
+  eta_minutes_max: { type: Number, default: null },
+  eta_text: { type: String, default: null },
+  eta_last_calculated_at: { type: Date, default: null },
 }, {
   timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   versionKey: '__v',
