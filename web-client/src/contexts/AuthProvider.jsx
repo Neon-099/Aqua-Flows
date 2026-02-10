@@ -18,9 +18,13 @@ export const AuthProvider = ({ children} ) => {
     useEffect(() => {
         const checkUser = async() => {
             try {
+                const token = localStorage.getItem('authToken');
                 const res = await fetch('/api/v1/auth/me', {
                     method: 'GET',
-                    headers: { 'Content-Type': 'application/json'},
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
                     credentials: 'include'
                 })
                 if(res.ok){
@@ -53,6 +57,9 @@ const login = async ( email, password ) => {
         }
         const data = await res.json();
         if(res.ok){
+            if (data.token) {
+                localStorage.setItem('authToken', data.token);
+            }
             setUser(data.user);
             return { success: true};
         }
@@ -73,6 +80,9 @@ const register = async (userData) => {
     })
         const data = await res.json();
         if(res.ok){
+            if (data.token) {
+                localStorage.setItem('authToken', data.token);
+            }
             setUser(data.user);
             return{success: true};
         }
@@ -87,6 +97,7 @@ const register = async (userData) => {
 const logout = async () => {
     try {
         await fetch ('/api/v1/auth/logout', { method: 'POST', credentials: 'include' })
+        localStorage.removeItem('authToken');
         setUser(null);
     }
     catch(error){
