@@ -5,6 +5,7 @@ export const ORDER_STATUS = Object.freeze({
   CONFIRMED: 'CONFIRMED',
   PICKUP: 'PICKUP',
   OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
+  DELIVERED: 'DELIVERED',
   PENDING_PAYMENT: 'PENDING_PAYMENT',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
@@ -32,6 +33,11 @@ export const PAYMENT_METHOD = Object.freeze({
 
 export const PAYMENT_PROVIDER = Object.freeze({
   PAYMONGO: 'PAYMONGO',
+});
+
+export const GALLON_TYPE = Object.freeze({
+  ROUND: 'ROUND',
+  SLIM: 'SLIM',
 });
 
 export const USER_ROLE = Object.freeze({
