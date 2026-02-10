@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Droplet,
@@ -15,18 +15,59 @@ import {
   CalendarRange,
   X,
 } from 'lucide-react';
+import { apiRequest } from '../utils/api';
+import { useAuth } from '../contexts/AuthProvider';
 
 const Order = () => {
+  const { user } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [containerType, setContainerType] = useState('5-gal-refill');
   const [quantity, setQuantity] = useState(2);
   const [paymentMethod, setPaymentMethod] = useState('cod');
-  const [schedule, setSchedule] = useState('today-am');
-  const [notes, setNotes] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [schedule, setSchedule] = useState('round-gallon');
+  const [orders, setOrders] = useState([]);
+  const [ordersError, setOrdersError] = useState('');
 
-  const subtotal = quantity * 85; // sample pricing in pesos
-  const deliveryFee = 40;
+  const subtotal = quantity * 15; // sample pricing in pesos
+  const deliveryFee = 5;
   const total = subtotal + deliveryFee;
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      try {
+        setOrdersError('');
+        const res = await apiRequest('/orders');
+        const mapped = (res?.data || []).map((order) => {
+          const createdAt = order.created_at ? new Date(order.created_at) : new Date();
+          const status =
+            order.status === 'DELIVERED' || order.status === 'COMPLETED'
+              ? 'Delivered'
+              : order.status === 'OUT_FOR_DELIVERY' || order.status === 'PICKUP'
+              ? 'In Transit'
+              : order.status === 'PENDING' || order.status === 'CONFIRMED'
+              ? 'Scheduled'
+              : order.status || 'Scheduled';
+          return {
+            id: order._id,
+            date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            items: order.gallon_type === 'SLIM' ? '3 Gallon Slim (Refill)' : '5 Gallon Round (Refill)',
+            qty: order.water_quantity,
+            total: order.total_amount,
+            status,
+            eta: order.eta_text || status,
+            address: user?.address || 'Address unavailable',
+          };
+        });
+        setOrders(mapped);
+      } catch (err) {
+        setOrdersError(err?.message || 'Failed to load orders');
+      }
+    };
+
+    loadOrders();
+  }, [user?.address]);
 
   const changeQuantity = (delta) => {
     setQuantity((q) => {
@@ -35,11 +76,76 @@ const Order = () => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const runGcashPayment = () =>
+    new Promise((resolve, reject) => {
+      setTimeout(() => {
+        // mock success rate; wire to real gateway later
+        Math.random() < 0.95 ? resolve(true) : reject(new Error('GCash payment failed.'));
+      }, 1400);
+    });
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // hook up to backend later
-    console.log({ containerType, quantity, paymentMethod, schedule, notes });
-    setIsModalOpen(false);
+    setPaymentError('');
+
+    if (paymentMethod === 'gcash') {
+      try {
+        setIsProcessingPayment(true);
+        await runGcashPayment();
+      } catch (error) {
+        setPaymentError(error?.message || 'GCash payment failed.');
+        setIsProcessingPayment(false);
+        return;
+      }
+    }
+
+    try {
+      const gallonType = schedule === 'slim-gallon' ? 'SLIM' : 'ROUND';
+      const res = await apiRequest('/orders', 'POST', {
+        water_quantity: quantity,
+        total_amount: total,
+        payment_method: paymentMethod.toUpperCase(),
+        gallon_type: gallonType,
+      });
+
+      const created = res?.data?.order || res?.data;
+      if (created) {
+        const createdAt = created.created_at ? new Date(created.created_at) : new Date();
+        const status =
+          created.status === 'DELIVERED' || created.status === 'COMPLETED'
+            ? 'Delivered'
+            : created.status === 'OUT_FOR_DELIVERY' || created.status === 'PICKUP'
+            ? 'In Transit'
+            : 'Scheduled';
+        const newOrder = {
+          id: created._id,
+          date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          items: gallonType === 'SLIM' ? '3 Gallon Slim (Refill)' : '5 Gallon Round (Refill)',
+          qty: created.water_quantity,
+          total: created.total_amount,
+          status,
+          eta: created.eta_text || status,
+          address: user?.address || 'Address unavailable',
+        };
+        setOrders((prev) => [newOrder, ...prev]);
+      }
+
+      setIsProcessingPayment(false);
+      setIsModalOpen(false);
+    } catch (err) {
+      setPaymentError(err?.message || 'Failed to create order');
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const statusStyles = (status) => {
+    if (status === 'Delivered') {
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    }
+    if (status === 'In Transit') {
+      return 'bg-blue-50 text-blue-700 border-blue-200';
+    }
+    return 'bg-amber-50 text-amber-700 border-amber-200';
   };
 
   return (
@@ -160,64 +266,61 @@ const Order = () => {
                 </div>
               </div>
             </div>
+
+            {/* Recent orders */}
+            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.18em]">
+                    Recent Orders
+                  </p>
+                  <h3 className="text-xl font-black text-slate-900">Your latest deliveries</h3>
+                </div>
+                <Link to="/orders" className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+                  View all
+                </Link>
+              </div>
+              <div className="grid gap-4">
+                {ordersError && (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700 text-sm font-semibold">
+                    {ordersError}
+                  </div>
+                )}
+                {orders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 flex flex-col gap-3"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em]">
+                          {order.id} • {order.date}
+                        </p>
+                        <p className="font-black text-slate-900 mt-1">{order.items}</p>
+                        <p className="text-sm text-slate-500 mt-1">
+                          Qty {order.qty} · {order.address}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-[11px] font-bold uppercase tracking-[0.18em] border px-2.5 py-1 rounded-full ${statusStyles(
+                          order.status
+                        )}`}
+                      >
+                        {order.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm text-slate-600">
+                      <span className="inline-flex items-center gap-2">
+                        <Clock size={16} /> {order.eta}
+                      </span>
+                      <span className="font-black text-slate-900">₱{order.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </section>
 
-          {/* Right column: stacked feature / reassurance cards */}
-          <aside className="space-y-5">
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
-                <Truck size={22} />
-              </div>
-              <div>
-                <h3 className="font-black text-lg text-slate-900">Real-time delivery tracking</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Track your rider on the map and receive SMS updates from pickup to doorstep.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-                <Shield size={22} />
-              </div>
-              <div>
-                <h3 className="font-black text-lg text-slate-900">Safe & verified riders</h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Every rider is background-checked and trained to handle your containers carefully.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.18em] mb-2">
-                Payment options
-              </p>
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
-                    <Wallet size={20} />
-                  </div>
-                  <div className="text-sm">
-                    <p className="font-semibold text-slate-900">Cash on Delivery</p>
-                    <p className="text-slate-500 text-xs">Pay your rider once gallons are delivered.</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-slate-900 text-blue-100 flex items-center justify-center">
-                    <CreditCard size={20} />
-                  </div>
-                  <div className="text-sm">
-                    <p className="font-semibold text-slate-900">GCash</p>
-                    <p className="text-slate-500 text-xs">Secure and instant digital payments.</p>
-                  </div>
-                </div>
-              </div>
-              <p className="mt-4 flex items-start gap-2 text-[11px] text-slate-400 font-semibold">
-                <Info size={14} className="mt-[2px]" />
-                Your rider will confirm the final amount and payment method upon arrival.
-              </p>
-            </div>
-          </aside>
         </div>
       </main>
 
@@ -247,46 +350,6 @@ const Order = () => {
             <form onSubmit={handleSubmit} className="grid md:grid-cols-[1.4fr,1fr] gap-0">
               {/* Left: form fields */}
               <div className="p-8 space-y-7 border-r border-slate-100">
-                {/* Container type */}
-                <section>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-black text-lg text-slate-900">Gallon selection</h3>
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                      Step 1 of 3
-                    </span>
-                  </div>
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    {[
-                      { id: '5-gal-refill', label: '5 Gallon Round', sub: 'Refill (bring empty)', price: '₱85' },
-                      { id: '5-gal-new', label: '5 Gallon Round', sub: 'With new container', price: '₱250' },
-                      { id: '3-gal-refill', label: '3 Gallon Slim', sub: 'Refill', price: '₱70' },
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setContainerType(item.id)}
-                        className={`text-left rounded-2xl p-4 border-2 transition-all flex flex-col justify-between h-full ${
-                          containerType === item.id
-                            ? 'border-blue-500 bg-blue-50 shadow-sm'
-                            : 'border-slate-100 bg-slate-50 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-blue-500 shadow-inner">
-                            <Droplet size={22} />
-                          </div>
-                          <div>
-                            <p className="font-black text-sm text-slate-900">{item.label}</p>
-                            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.16em]">
-                              {item.sub}
-                            </p>
-                          </div>
-                        </div>
-                        <p className="font-black text-xl text-slate-900">{item.price}</p>
-                      </button>
-                    ))}
-                  </div>
-                </section>
 
                 {/* Quantity & schedule */}
                 <section className="grid md:grid-cols-2 gap-5">
@@ -322,7 +385,7 @@ const Order = () => {
                     </div>
                   </div>
 
-                  {/* Schedule */}
+                  {/* GALLON TYPE */}
                   <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center text-blue-500 shadow-inner">
@@ -330,16 +393,15 @@ const Order = () => {
                       </div>
                       <div>
                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                          Schedule
+                          Gallon Type
                         </p>
-                        <p className="font-black text-lg text-slate-900">When do you need it?</p>
+                        <p className="font-black text-lg text-slate-900">What type of gallon?</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { id: 'today-am', label: 'Today', sub: '9AM – 12NN' },
-                        { id: 'today-pm', label: 'Today', sub: '1PM – 5PM' },
-                        { id: 'tomorrow-am', label: 'Tomorrow', sub: '9AM – 12NN' },
+                        { id: 'round-gallon', label: 'Round Gallon' },
+                        { id: 'slim-gallon', label: 'Slim Gallon'},
                       ].map((slot) => (
                         <button
                           key={slot.id}
@@ -354,76 +416,16 @@ const Order = () => {
                           <span className="block uppercase tracking-[0.18em] text-[10px]">
                             {slot.label}
                           </span>
-                          <span className="block mt-1 text-slate-500">{slot.sub}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 </section>
-
-                {/* Notes */}
-                <section className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock size={16} className="text-slate-400" />
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                      Notes for rider
-                    </p>
-                  </div>
-                  <textarea
-                    rows={3}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    className="w-full bg-white rounded-2xl border border-slate-100 p-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                    placeholder="e.g. Please call when you arrive at the gate. Blue house, 2nd floor."
-                  />
-                </section>
               </div>
 
               {/* Right: summary + payment */}
               <aside className="p-8 space-y-6 bg-slate-50/60">
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                  <h3 className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.22em] mb-4 text-center">
-                    Order Summary
-                  </h3>
-                  <div className="flex gap-4 mb-4">
-                    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 shadow-inner shrink-0">
-                      <Droplet fill="currentColor" size={26} />
-                    </div>
-                    <div>
-                      <p className="font-black text-base text-slate-900">
-                        {containerType === '5-gal-new'
-                          ? '5 Gallon Round (New container)'
-                          : containerType === '3-gal-refill'
-                          ? '3 Gallon Slim (Refill)'
-                          : '5 Gallon Round (Refill)'}
-                      </p>
-                      <p className="text-[12px] text-slate-400 font-semibold mt-1">
-                        Qty {quantity} •{' '}
-                        {schedule === 'today-am'
-                          ? 'Today, 9AM–12NN'
-                          : schedule === 'today-pm'
-                          ? 'Today, 1PM–5PM'
-                          : 'Tomorrow, 9AM–12NN'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 text-sm pt-3 border-t border-slate-100">
-                    <div className="flex justify-between text-slate-500 font-semibold">
-                      <span>Subtotal</span>
-                      <span className="text-slate-800">₱{subtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-500 font-semibold">
-                      <span>Delivery fee</span>
-                      <span className="text-slate-800">₱{deliveryFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-black text-slate-900 text-xl pt-3">
-                      <span>Total</span>
-                      <span>₱{total.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-
+                {/* PAYMENT METHOD */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
                   <div className="flex items-center gap-2">
                     <CreditCard size={18} className="text-blue-500" />
@@ -455,15 +457,59 @@ const Order = () => {
                   </div>
                   <p className="text-[11px] text-slate-400 font-semibold flex items-start gap-2">
                     <Info size={14} className="mt-[2px] text-slate-300" />
-                    Your rider will confirm the amount and payment upon delivery.
+                    {paymentMethod === 'gcash'
+                      ? 'GCash payments must be completed before we create your order.'
+                      : 'Your rider will confirm the amount and payment upon delivery.'}
                   </p>
+                  {paymentError && (
+                    <p className="text-[11px] font-semibold text-rose-600">{paymentError}</p>
+                  )}
                 </div>
+                
+                {/* ORDER SUMMARY */}
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                  <h3 className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.22em] mb-4 text-center">
+                    Order Summary
+                  </h3>
+                  <div className="flex gap-4 mb-4">
+                    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 shadow-inner shrink-0">
+                      <Droplet fill="currentColor" size={26} />
+                    </div>
+                    <div>
+                      <p className="font-black text-base text-slate-900">
+                        {containerType === '5-gal-new'
+                          ? '5 Gallon Round (New container)'
+                          : containerType === '3-gal-refill'
+                          ? '3 Gallon Slim (Refill)'
+                          : '5 Gallon Round (Refill)'}
+                      </p>
+                      <p className="text-[12px] text-slate-400 font-semibold mt-1">
+                        Qty {quantity} •{' '}
+                      </p>
+                    </div>
+                  </div>
 
+                  <div className="space-y-2 text-sm pt-3 border-t border-slate-100">
+                    <div className="flex justify-between text-slate-500 font-semibold">
+                      <span>Subtotal</span>
+                      <span className="text-slate-800">₱{subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-500 font-semibold">
+                      <span>Delivery fee</span>
+                      <span className="text-slate-800">₱{deliveryFee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between font-black text-slate-900 text-xl pt-3">
+                      <span>Total</span>
+                      <span>₱{total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
                 <button
                   type="submit"
-                  className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm uppercase tracking-[0.22em] hover:bg-slate-800 transition-all"
+                  disabled={isProcessingPayment}
+                  className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm uppercase tracking-[0.22em] hover:bg-slate-800 transition-all disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  Confirm Order
+                  {isProcessingPayment ? 'Processing GCash…' : 'Confirm Order'}
                 </button>
               </aside>
             </form>
