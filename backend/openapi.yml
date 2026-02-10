@@ -1,0 +1,297 @@
+openapi: 3.0.3
+info:
+  title: Aquaflow Order API
+  version: 1.0.0
+  description: RESTful Order API with PayMongo GCash integration
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Orders
+  - name: Webhooks
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        assigned_rider_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, PICKUP, OUT_FOR_DELIVERY, PENDING_PAYMENT, COMPLETED, CANCELLED]
+        water_quantity:
+          type: integer
+        total_amount:
+          type: number
+          format: float
+        payment_method:
+          type: string
+          enum: [COD, GCASH]
+        payment_status:
+          type: string
+          enum: [UNPAID, PENDING, PAID, FAILED]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        order_id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [PAYMONGO]
+        method:
+          type: string
+          enum: [GCASH, COD]
+        paymongo_payment_intent_id:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, PAID, FAILED, REFUNDED]
+        amount:
+          type: number
+          format: float
+        currency:
+          type: string
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ApiResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          nullable: true
+        meta:
+          nullable: true
+
+paths:
+  /orders:
+    post:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Create order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, water_quantity, total_amount, payment_method]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                water_quantity:
+                  type: integer
+                  minimum: 1
+                total_amount:
+                  type: number
+                  format: float
+                payment_method:
+                  type: string
+                  enum: [COD, GCASH]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+    get:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: List orders for rider
+      parameters:
+        - name: assigned_to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /orders/{id}:
+    get:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Get order by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /orders/{id}/cancel:
+    put:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Cancel order (customer only, pending only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+
+  /orders/{id}/confirm:
+    put:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Confirm order (staff/admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+
+  /orders/{id}/assign_rider:
+    put:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Assign rider (staff/admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rider_id]
+              properties:
+                rider_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: OK
+
+  /orders/{id}/start_delivery:
+    put:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Start delivery (rider)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+
+  /orders/{id}/mark_pending_payment:
+    put:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Mark pending payment (rider)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+
+  /orders/{id}/confirm_payment:
+    put:
+      tags: [Orders]
+      security:
+        - bearerAuth: []
+      summary: Confirm COD payment (rider)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+
+  /webhooks/payments:
+    post:
+      tags: [Webhooks]
+      summary: PayMongo payment webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: OK

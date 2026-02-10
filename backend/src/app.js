@@ -4,8 +4,12 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors'
 import helmet from 'helmet'
 import router from './routes/auth.route.js';
+import orderRouter from './routes/order.route.js';
+import riderRouter from './routes/rider.route.js';
+import webhookRouter from './routes/webhook.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 import { env } from './config/env.js';
+
 
 const app = express();
 
@@ -18,7 +22,16 @@ const configuredOrigins = (env.CLIENT_URLS || env.CLIENT_URL || '')
 const allowedOrigins = configuredOrigins.length > 0 ? configuredOrigins : defaultOrigins;
 const allowNoOrigin = env.ALLOW_NO_ORIGIN === 'true' || !isProd;
 
-app.use(express.json());
+//CAPTURE RAW BODY FOR WEBHOOK SIGNATURE VALIDATION
+app.use(express.json({
+  verify: (req, res, buf, encoding) => {
+    console.log('verify called, buf type:', typeof buf);
+    req.rawBody = buf.toString(encoding || 'utf8');
+  }
+}));
+
+//MIDDLEWARE
+// app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
   origin: (origin, cb) => {
@@ -43,6 +56,9 @@ app.get('/health', (req, res) => {
 
 //MAIN ROUTER URI
 app.use('/api/v1/auth', router)
+app.use('/api/v1/orders', orderRouter)
+app.use('/api/v1/riders', riderRouter)
+app.use('/api/v1/webhooks', webhookRouter)
 
 app.use(errorHandler);
 
