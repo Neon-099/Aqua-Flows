@@ -33,8 +33,7 @@ export const listOrdersForRider = async (req, res, next) => {
     const riderId =
       req.query.rider_id ||
       req.query.riderId ||
-      req.user?.rider_id ||
-      req.user?._id;
+      req.user?.rider_id;
 
     const result = await orderService.listOrdersForRider({
       user: req.user,
