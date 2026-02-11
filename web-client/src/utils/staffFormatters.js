@@ -52,9 +52,10 @@ export const getStatusColors = (status) => {
   const colors = {
     PENDING: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200' },
     CONFIRMED: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200' },
-    PICKUP: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' },
+    PICKED_UP: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' },
     OUT_FOR_DELIVERY: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200' },
     DELIVERED: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' },
+    PENDING_PAYMENT: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' },
     COMPLETED: { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200' },
     CANCELLED: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' },
   };

@@ -8,19 +8,22 @@
  */
 export const getRiderActions = (status, paymentMethod) => {
   const actions = {
+    PENDING: [
+      { label: 'Accept Order', action: 'acceptOrder', variant: 'primary' },
+    ],
     CONFIRMED: [
       { label: 'Confirm Pickup', action: 'confirmPickup', variant: 'primary' },
       { label: 'Cancel', action: 'cancelPickup', variant: 'danger' }
     ],
-    PICKUP: [
+    PICKED_UP: [
       { label: 'Start Delivery', action: 'startDelivery', variant: 'primary' }
     ],
     OUT_FOR_DELIVERY: [
       { label: 'Mark as Delivered', action: 'markDelivered', variant: 'success' }
     ],
-    DELIVERED: [
-      { label: 'Confirm Payment', action: 'confirmPayment', variant: 'primary' }
-    ],
+    DELIVERED: paymentMethod === 'COD'
+      ? [{ label: 'Confirm Payment', action: 'confirmPayment', variant: 'primary' }]
+      : [],
     PENDING_PAYMENT: [
       { label: 'Confirm Payment', action: 'confirmPayment', variant: 'primary' }
     ],
