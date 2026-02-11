@@ -45,7 +45,11 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: Object.values(USER_ROLE),
-    default: USER_ROLE.USER,
+    default: USER_ROLE.CUSTOMER,
+  },
+  isArchived: {
+    type: Boolean,
+    default: false,
   },
   resetPasswordToken: String,
   resetPasswordExpire: Date,
