@@ -33,6 +33,17 @@ const addHistory = async (session, orderId, status, userId) => {
   }], { session });
 };
 
+const resolveRiderId = async (user) => {
+  if (user?.rider_id) return user.rider_id;
+  const rider = await Rider.findOne({ user_id: user?._id });
+  if (!rider) return null;
+  return rider._id;
+};
+
+const isTransientTxnError = (err) =>
+  err?.errorLabels?.includes('TransientTransactionError') ||
+  /write conflict/i.test(err?.message || '');
+
 export const createOrder = async ({ user, payload }) => {
   const { customer_id, water_quantity, total_amount, payment_method, gallon_type } = payload;
 
@@ -132,15 +143,25 @@ export const getOrderById = async ({ user, orderId }) => {
 };
 
 export const listOrdersForRider = async ({ user, riderId }) => {
-  if (![USER_ROLE.RIDER, USER_ROLE.STAFF, USER_ROLE.ADMIN, USER_ROLE.CUSTOMER, USER_ROLE.USER].includes(user.role)) {
+  if (![USER_ROLE.RIDER, USER_ROLE.ADMIN, USER_ROLE.CUSTOMER, USER_ROLE.USER].includes(user.role)) {
     throwError(403, 'Not authorized');
   }
 
   if (user.role === USER_ROLE.RIDER) {
-    const resolvedRiderId = riderId || user.rider_id || user._id;
-    if (!resolvedRiderId) throwError(400, 'Missing rider id');
-    return await Order.find({ assigned_rider_id: resolvedRiderId })
-      .sort({ status: 1, updated_at: -1 });
+    const effectiveRiderId = riderId && riderId !== user?._id ? riderId : null;
+    const resolvedRiderId = effectiveRiderId || (await resolveRiderId(user));
+    const riderIds = [resolvedRiderId, user?._id].filter(Boolean);
+    if (riderIds.length === 0) throwError(400, 'Missing rider id');
+    const results = await Order.find({
+      $or: [
+        { assigned_rider_id: { $in: riderIds } },
+        { status: ORDER_STATUS.PENDING, assigned_rider_id: null },
+      ],
+    }).sort({ status: 1, updated_at: -1 });
+    return results.map((order) => {
+      const assignedToMe = Boolean(order.assigned_rider_id && riderIds.includes(order.assigned_rider_id));
+      return { ...order.toObject(), assigned_to_me: assignedToMe };
+    });
   }
 
   if (user.role === USER_ROLE.CUSTOMER || user.role === USER_ROLE.USER) {
@@ -153,6 +174,14 @@ export const listOrdersForRider = async ({ user, riderId }) => {
   if (riderId) {
     return await Order.find({ assigned_rider_id: riderId })
       .sort({ status: 1, updated_at: -1 });
+  }
+
+  return await Order.find().sort({ created_at: -1 });
+};
+
+export const listOrdersForStaff = async ({ user }) => {
+  if (user.role !== USER_ROLE.STAFF) {
+    throwError(403, 'Not authorized');
   }
 
   return await Order.find().sort({ created_at: -1 });
@@ -190,35 +219,80 @@ export const cancelOrder = async ({ user, orderId }) => {
 };
 
 export const confirmOrder = async ({ user, orderId }) => {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+
+      const order = await Order.findById(orderId).session(session);
+      if (!order) throwError(404, 'Order not found');
+
+      if (user.role === USER_ROLE.STAFF) {
+        assertTransition(order.status, ORDER_STATUS.CONFIRMED);
+        order.status = ORDER_STATUS.CONFIRMED;
+        await order.save({ session });
+        await addHistory(session, order._id, ORDER_STATUS.CONFIRMED, user._id);
+      } else if (user.role === USER_ROLE.RIDER) {
+        // Rider manual accept from PENDING -> CONFIRMED and assign to self
+        assertTransition(order.status, ORDER_STATUS.CONFIRMED);
+        const resolvedRiderId = await resolveRiderId(user);
+        if (!resolvedRiderId) throwError(400, 'Missing rider id');
+        if (order.assigned_rider_id && order.assigned_rider_id !== resolvedRiderId) {
+          throwError(409, 'Order already assigned to another rider');
+        }
+        order.status = ORDER_STATUS.CONFIRMED;
+        order.assigned_rider_id = resolvedRiderId;
+        await order.save({ session });
+        await addHistory(session, order._id, ORDER_STATUS.CONFIRMED, user._id);
+
+        await OrderAssignment.create([{
+          order_id: orderId,
+          rider_id: order.assigned_rider_id,
+          assigned_by: user._id,
+          assigned_at: new Date(),
+        }], { session });
+      } else {
+        throwError(403, 'Not authorized to accept order');
+      }
+
+      await session.commitTransaction();
+      return order;
+    } catch (err) {
+      await session.abortTransaction();
+      if (isTransientTxnError(err) && attempt < maxAttempts) {
+        continue;
+      }
+      throw err;
+    } finally {
+      session.endSession();
+    }
+  }
+};
+
+export const riderPickup = async ({ user, orderId }) => {
+  if (user.role !== USER_ROLE.RIDER) {
+    throwError(403, 'Only riders can confirm pickup');
+  }
+
   const order = await Order.findById(orderId);
   if (!order) throwError(404, 'Order not found');
+
+  const resolvedRiderId = await resolveRiderId(user);
+  if (!resolvedRiderId) throwError(400, 'Missing rider id');
+  if (order.assigned_rider_id !== resolvedRiderId) {
+    throwError(403, 'Order not assigned to this rider');
+  }
 
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
 
-    if (user.role === USER_ROLE.STAFF) {
-      assertTransition(order.status, ORDER_STATUS.CONFIRMED);
-      order.status = ORDER_STATUS.CONFIRMED;
-      await order.save({ session });
-      await addHistory(session, order._id, ORDER_STATUS.CONFIRMED, user._id);
-
-      // auto-assign after staff accept
-      const { rider } = await autoAssignRider({ user, orderId });
-      order.assigned_rider_id = rider._id;
-      await order.save({ session });
-
-    } else if (user.role === USER_ROLE.RIDER) {
-      //IF RIDER ACCEPTS IT
-      assertTransition(order.status, ORDER_STATUS.PICKUP);
-      order.status = ORDER_STATUS.PICKUP;
-      await order.save({ session });
-      await addHistory(session, order._id, ORDER_STATUS.PICKUP, user._id);
-
-      await applyEtaToOrder(session, order);
-    } else {
-      throwError(403, 'Not authorized to accept order');
-    }
+    assertTransition(order.status, ORDER_STATUS.PICKED_UP);
+    order.status = ORDER_STATUS.PICKED_UP;
+    await applyEtaToOrder(session, order);
+    await order.save({ session });
+    await addHistory(session, order._id, ORDER_STATUS.PICKED_UP, user._id);
 
     await session.commitTransaction();
     return order;
@@ -271,25 +345,73 @@ export const autoAssignRider = async({user, orderId, weights}) => {
     throwError(403, 'Only staff can assign riders');
   }
 
-  const order = await Order.findById(orderId);
-  if(!order) throwError(404, 'Order not found');
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
 
-  const gallons = order.water_quantity;
-  const w = {
-    load: weights?.load ?? 0.5,
-    orders: weights?.orders ?? 0.4,
-    capacity: weights?.capacity ?? 0.1,
-    distance: weights?.distance ?? 0.0,
-  };
+      const order = await Order.findById(orderId).session(session);
+      if(!order) throwError(404, 'Order not found');
+      if (order.status !== ORDER_STATUS.CONFIRMED) {
+        throwError(400, 'Only confirmed orders can be assigned');
+      }
+      if (order.assigned_rider_id) {
+        throwError(409, 'Order already assigned');
+      }
 
-  const session = await mongoose.startSession();
-  try {
-    session.startTransaction();
+      const gallons = order.water_quantity;
+      const w = {
+        load: weights?.load ?? 0.5,
+        orders: weights?.orders ?? 0.4,
+        capacity: weights?.capacity ?? 0.1,
+        distance: weights?.distance ?? 0.0,
+      };
 
-    // Eligible riders query + scoring in DB
-    const candidates = await Rider.aggregate([
-      {
-        $match: {
+      // Eligible riders query + scoring in DB
+      const candidates = await Rider.aggregate([
+        {
+          $match: {
+            status: 'active',
+            $expr: {
+              $gte: [
+                { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
+                gallons
+              ]
+            }
+          }
+        },
+        {
+          $addFields: {
+            remainingCapacity: { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
+          }
+        },
+        {
+          $addFields: {
+            score: {
+              $add: [
+                { $multiply: [w.load, { $divide: [1, { $add: ['$currentLoadGallons', 1] }] }] },
+                { $multiply: [w.orders, { $divide: [1, { $add: ['$activeOrdersCount', 1] }] }] },
+                { $multiply: [w.capacity, '$remainingCapacity'] },
+                { $multiply: [w.distance, 0] }
+              ]
+            }
+          }
+        },
+        { $sort: { score: -1, _id: 1 } },
+        { $limit: 1 }
+      ]).session(session);
+
+      if (!candidates || candidates.length === 0) {
+        throwError(409, 'NO_AVAILABLE_RIDER');
+      }
+
+      const riderId = candidates[0]._id;
+
+      // Atomic rider load update with capacity check
+      const updatedRider = await Rider.findOneAndUpdate(
+        {
+          _id: riderId,
           status: 'active',
           $expr: {
             $gte: [
@@ -297,78 +419,42 @@ export const autoAssignRider = async({user, orderId, weights}) => {
               gallons
             ]
           }
-        }
-      },
-      {
-        $addFields: {
-          remainingCapacity: { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
-        }
-      },
-      {
-        $addFields: {
-          score: {
-            $add: [
-              { $multiply: [w.load, { $divide: [1, { $add: ['$currentLoadGallons', 1] }] }] },
-              { $multiply: [w.orders, { $divide: [1, { $add: ['$activeOrdersCount', 1] }] }] },
-              { $multiply: [w.capacity, '$remainingCapacity'] },
-              { $multiply: [w.distance, 0] }
-            ]
+        },
+        {
+          $inc: {
+            currentLoadGallons: gallons,
+            activeOrdersCount: 1
           }
-        }
-      },
-      { $sort: { score: -1, _id: 1 } },
-      { $limit: 1 }
-    ]).session(session);
+        },
+        { new: true, session }
+      );
 
-    if (!candidates || candidates.length === 0) {
-      throwError(409, 'NO_AVAILABLE_RIDER');
+      if (!updatedRider) {
+        throwError(409, 'NO_AVAILABLE_RIDER');
+      }
+
+      order.assigned_rider_id = riderId;
+      await order.save({ session });
+
+      await OrderAssignment.create([{
+        order_id: orderId,
+        rider_id: riderId,
+        assigned_by: user._id,
+        assigned_at: new Date(),
+      }], { session });
+
+      await session.commitTransaction();
+
+      return { order, rider: updatedRider };
+    } catch (err) {
+      await session.abortTransaction();
+      if (isTransientTxnError(err) && attempt < maxAttempts) {
+        continue;
+      }
+      throw err;
+    } finally {
+      session.endSession();
     }
-
-    const riderId = candidates[0]._id;
-
-    // Atomic rider load update with capacity check
-    const updatedRider = await Rider.findOneAndUpdate(
-      {
-        _id: riderId,
-        status: 'active',
-        $expr: {
-          $gte: [
-            { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
-            gallons
-          ]
-        }
-      },
-      {
-        $inc: {
-          currentLoadGallons: gallons,
-          activeOrdersCount: 1
-        }
-      },
-      { new: true, session }
-    );
-
-    if (!updatedRider) {
-      throwError(409, 'NO_AVAILABLE_RIDER');
-    }
-
-    order.assigned_rider_id = riderId;
-    await order.save({ session });
-
-    await OrderAssignment.create([{
-      order_id: orderId,
-      rider_id: riderId,
-      assigned_by: user._id,
-      assigned_at: new Date(),
-    }], { session });
-
-    await session.commitTransaction();
-
-    return { order, rider: updatedRider };
-  } catch (err) {
-    await session.abortTransaction();
-    throw err;
-  } finally {
-    session.endSession();
   }
 }
 
@@ -395,7 +481,9 @@ export const riderStartDelivery = async ({ user, orderId }) => {
   const order = await Order.findById(orderId);
   if (!order) throwError(404, 'Order not found');
 
-  if (order.assigned_rider_id !== user.rider_id && order.assigned_rider_id !== user._id) {
+  const resolvedRiderId = await resolveRiderId(user);
+  if (!resolvedRiderId) throwError(400, 'Missing rider id');
+  if (order.assigned_rider_id !== resolvedRiderId) {
     throwError(403, 'Order not assigned to this rider');
   }
 
@@ -405,7 +493,66 @@ export const riderStartDelivery = async ({ user, orderId }) => {
 
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
-    await applyEtaToOrder(session, order);
+    await order.save({ session });
+    await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
+
+    await session.commitTransaction();
+    return order;
+  } catch (err) {
+    await session.abortTransaction();
+    throw err;
+  } finally {
+    session.endSession();
+  }
+};
+
+export const queueDispatch = async ({ user, orderId, minutes }) => {
+  if (user.role !== USER_ROLE.STAFF) {
+    throwError(403, 'Only staff can queue dispatch');
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) throwError(404, 'Order not found');
+
+  if (order.status !== ORDER_STATUS.PICKED_UP) {
+    throwError(400, 'Order must be picked up before dispatch');
+  }
+
+  const delayMinutes = Number(minutes);
+  if (!Number.isFinite(delayMinutes) || delayMinutes <= 0) {
+    throwError(400, 'Invalid dispatch delay');
+  }
+
+  const now = new Date();
+  const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000);
+
+  order.dispatch_queued_at = now;
+  order.dispatch_after_minutes = delayMinutes;
+  order.dispatch_scheduled_for = scheduledFor;
+  await order.save();
+
+  return order;
+};
+
+export const dispatchOrder = async ({ user, orderId }) => {
+  if (user.role !== USER_ROLE.STAFF) {
+    throwError(403, 'Only staff can dispatch');
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) throwError(404, 'Order not found');
+
+  if (order.status !== ORDER_STATUS.PICKED_UP) {
+    throwError(400, 'Order must be picked up before dispatch');
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
+    order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
+    order.dispatched_at = new Date();
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
 
@@ -427,7 +574,9 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
   const order = await Order.findById(orderId);
   if (!order) throwError(404, 'Order not found');
 
-  if (order.assigned_rider_id !== user.rider_id && order.assigned_rider_id !== user._id) {
+  const resolvedRiderId = await resolveRiderId(user);
+  if (!resolvedRiderId) throwError(400, 'Missing rider id');
+  if (order.assigned_rider_id !== resolvedRiderId) {
     throwError(403, 'Order not assigned to this rider');
   }
 
@@ -465,7 +614,9 @@ export const riderCancelPickup = async ({ user, orderId }) => {
   const order = await Order.findById(orderId);
   if (!order) throwError(404, 'Order not found');
 
-  if (order.assigned_rider_id !== user.rider_id && order.assigned_rider_id !== user._id) {
+  const resolvedRiderId = await resolveRiderId(user);
+  if (!resolvedRiderId) throwError(400, 'Missing rider id');
+  if (order.assigned_rider_id !== resolvedRiderId) {
     throwError(403, 'Order not assigned to this rider');
   }
 
@@ -498,7 +649,9 @@ export const riderMarkPendingPayment = async ({ user, orderId }) => {
   const order = await Order.findById(orderId);
   if (!order) throwError(404, 'Order not found');
 
-  if (order.assigned_rider_id !== user.rider_id && order.assigned_rider_id !== user._id) {
+  const resolvedRiderId = await resolveRiderId(user);
+  if (!resolvedRiderId) throwError(400, 'Missing rider id');
+  if (order.assigned_rider_id !== resolvedRiderId) {
     throwError(403, 'Order not assigned to this rider');
   }
 

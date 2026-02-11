@@ -1,5 +1,7 @@
 // e:\Aquaflow\backend\src\services\auth.service.js
 import User from '../models/User.model.js';
+import Customer from '../models/Customer.model.js';
+import { USER_ROLE } from '../constants/order.constants.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/token.js';
 import { sendEmail } from '../utils/sendEmail.js';
 import crypto from 'crypto';
@@ -10,13 +12,25 @@ export const registerUser = async (email, password, name, address, phone) => {
   if (userExists) {
     throw new Error('User already exists');
   }
-  const user = await User.create({ email, password, name, address, phone });
+  const user = await User.create({
+    email,
+    password,
+    name,
+    address,
+    phone,
+    role: USER_ROLE.CUSTOMER,
+  });
+  await Customer.create({
+    user_id: user._id,
+    default_address: address,
+  });
   return {
     _id: user._id,
     email: user.email,
     name: user.name,
     address: user.address,
     phone: user.phone,
+    role: user.role,
     accessToken: generateAccessToken(user._id),
     refreshToken: generateRefreshToken(user._id),
   };
@@ -41,6 +55,7 @@ export const loginUser = async (email, password) => {
     name: user.name,
     address: user.address,
     phone: user.phone,
+    role: user.role,
     accessToken: generateAccessToken(user._id),
     refreshToken: generateRefreshToken(user._id),
   };
