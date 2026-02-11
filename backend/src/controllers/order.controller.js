@@ -46,6 +46,15 @@ export const listOrdersForRider = async (req, res, next) => {
   }
 };
 
+export const listOrdersForStaff = async (req, res, next) => {
+  try {
+    const result = await orderService.listOrdersForStaff({ user: req.user });
+    return ok(res, result, { count: result.length });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const cancelOrder = async (req, res, next) => {
   try {
     const result = await orderService.cancelOrder({
@@ -104,6 +113,43 @@ export const autoAssignRider = async (req, res, next) => {
 export const riderStartDelivery = async (req, res, next) => {
   try {
     const result = await orderService.riderStartDelivery({
+      user: req.user,
+      orderId: req.params.id,
+    });
+    return ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const queueDispatch = async (req, res, next) => {
+  try {
+    const result = await orderService.queueDispatch({
+      user: req.user,
+      orderId: req.params.id,
+      minutes: req.body?.minutes,
+    });
+    return ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const dispatchOrder = async (req, res, next) => {
+  try {
+    const result = await orderService.dispatchOrder({
+      user: req.user,
+      orderId: req.params.id,
+    });
+    return ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const riderPickup = async (req, res, next) => {
+  try {
+    const result = await orderService.riderPickup({
       user: req.user,
       orderId: req.params.id,
     });

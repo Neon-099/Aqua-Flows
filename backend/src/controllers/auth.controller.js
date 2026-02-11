@@ -20,7 +20,7 @@ export const register = async (req, res, next) => {
     res.status(201).json({
       success: true,
       token: data.accessToken,
-      user: { id: data._id, email: data.email, name: data.name, address: data.address, phone: data.phone }
+      user: { id: data._id, email: data.email, name: data.name, address: data.address, phone: data.phone, role: data.role }
     });
   } catch (error) {
     next(error);
@@ -35,7 +35,7 @@ export const login = async (req, res, next) => {
     res.status(200).json({
       success: true,
       token: data.accessToken,
-      user: { id: data._id, email: data.email, name: data.name, address: data.address, phone: data.phone }
+      user: { id: data._id, email: data.email, name: data.name, address: data.address, phone: data.phone, role: data.role }
     });
   } catch (error) {
     next(error);
