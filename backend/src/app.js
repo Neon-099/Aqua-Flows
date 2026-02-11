@@ -7,6 +7,8 @@ import router from './routes/auth.route.js';
 import orderRouter from './routes/order.route.js';
 import riderRouter from './routes/rider.route.js';
 import webhookRouter from './routes/webhook.route.js';
+import adminRouter from './routes/admin.route.js';
+import staffRouter from './routes/staff.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 import { env } from './config/env.js';
 
@@ -49,6 +51,17 @@ app.use(cors({
 }));
 app.use(helmet()); //TO PROTECT THE HTTP RESPONSE OF A HEADER
 
+// Request timing logger
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    const tag = ms >= 10000 ? 'SLOW' : 'OK';
+    console.log(`[${tag}] ${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`);
+  });
+  next();
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, status: 'ok' });
@@ -59,6 +72,8 @@ app.use('/api/v1/auth', router)
 app.use('/api/v1/orders', orderRouter)
 app.use('/api/v1/riders', riderRouter)
 app.use('/api/v1/webhooks', webhookRouter)
+app.use('/api/v1/admin', adminRouter)
+app.use('/api/v1/staff', staffRouter)
 
 app.use(errorHandler);
 
