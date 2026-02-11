@@ -21,7 +21,6 @@ const riderSchema = new mongoose.Schema({
     type: String,
     enum: ['active', 'inactive'],
     default: 'active',
-    index: true,
   },
   maxCapacityGallons: {
     type: Number,
