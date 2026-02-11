@@ -65,7 +65,7 @@ const Auth = () => {
       if(activeTab === 'signup'){
         if(formData.password !== formData.confirmPassword){
           setError('Passwords do not match');
-          setLoading(true);
+          setLoading(false);
           return;
         }
         const res = await register(formData);
@@ -79,10 +79,17 @@ const Auth = () => {
       //LOGIN
       else {
         const res = await login(formData.email, formData.password);
-        if(res.success){
-          navigate('/home')
-        }
-        else {
+        if (res.success) {
+          if (res.role === 'customer') {
+            navigate('/home');
+          } else if (res.role === 'staff') {
+            navigate('/staff/orders');
+          } else if (res.role === 'rider') {
+            navigate('/rider/orders');
+          }  else {
+            setError('Login succeeded, but role is missing.');
+          }
+        } else {
           setError(res.error || 'Login failed');
         }
       }
@@ -172,6 +179,8 @@ const Auth = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [resetCooldown]);
+
+  console.log('Data: ',formData)
 
   return (
     <div className="min-h-screen w-screen font-sans text-slate-900 bg-white m-0 p-0 flex">

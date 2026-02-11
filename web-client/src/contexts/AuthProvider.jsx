@@ -61,7 +61,7 @@ const login = async ( email, password ) => {
                 localStorage.setItem('authToken', data.token);
             }
             setUser(data.user);
-            return { success: true};
+            return { success: true, role: data?.user?.role, user: data.user };
         }
         return {success: false, error: data.error || data.message};
     }
@@ -84,7 +84,7 @@ const register = async (userData) => {
                 localStorage.setItem('authToken', data.token);
             }
             setUser(data.user);
-            return{success: true};
+            return { success: true, role: data?.user?.role, user: data.user };
         }
         return {success: false, error: data.error || data.message};
     }

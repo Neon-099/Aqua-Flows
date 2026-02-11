@@ -11,7 +11,6 @@ import {
   CreditCard,
   Info,
   Truck,
-  Shield,
   CalendarRange,
   X,
 } from 'lucide-react';
@@ -21,7 +20,6 @@ import { useAuth } from '../contexts/AuthProvider';
 const Order = () => {
   const { user } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [containerType, setContainerType] = useState('5-gal-refill');
   const [quantity, setQuantity] = useState(2);
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -29,6 +27,10 @@ const Order = () => {
   const [schedule, setSchedule] = useState('round-gallon');
   const [orders, setOrders] = useState([]);
   const [ordersError, setOrdersError] = useState('');
+
+  const gallonType = schedule === 'slim-gallon' ? 'SLIM' : 'ROUND';
+  const gallonLabel =
+    gallonType === 'SLIM' ? `Gallon Slim (Refill)` : `Gallon Round (Refill)`;
 
   const subtotal = quantity * 15; // sample pricing in pesos
   const deliveryFee = 5;
@@ -44,20 +46,18 @@ const Order = () => {
           const status =
             order.status === 'DELIVERED' || order.status === 'COMPLETED'
               ? 'Delivered'
-              : order.status === 'OUT_FOR_DELIVERY' || order.status === 'PICKUP'
+              : order.status === 'OUT_FOR_DELIVERY' || order.status === 'PICKED_UP'
               ? 'In Transit'
               : order.status === 'PENDING' || order.status === 'CONFIRMED'
-              ? 'Scheduled'
-              : order.status || 'Scheduled';
           return {
             id: order._id,
             date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-            items: order.gallon_type === 'SLIM' ? '3 Gallon Slim (Refill)' : '5 Gallon Round (Refill)',
+            items: order.gallon_type === 'SLIM' ? `${order.water_quantity} Gallon Slim (Refill)` : `5 Gallon Round (Refill)`,
             qty: order.water_quantity,
             total: order.total_amount,
             status,
-            eta: order.eta_text || status,
-            address: user?.address || 'Address unavailable',
+            name: user?.name || user.name,
+            address: user?.address || user.address || 'Address unavailable',
           };
         });
         setOrders(mapped);
@@ -67,7 +67,9 @@ const Order = () => {
     };
 
     loadOrders();
-  }, [user?.address]);
+  }, [user?.address, user?.name]);
+
+  console.log('Order: ', orders);
 
   const changeQuantity = (delta) => {
     setQuantity((q) => {
@@ -100,7 +102,6 @@ const Order = () => {
     }
 
     try {
-      const gallonType = schedule === 'slim-gallon' ? 'SLIM' : 'ROUND';
       const res = await apiRequest('/orders', 'POST', {
         water_quantity: quantity,
         total_amount: total,
@@ -114,13 +115,13 @@ const Order = () => {
         const status =
           created.status === 'DELIVERED' || created.status === 'COMPLETED'
             ? 'Delivered'
-            : created.status === 'OUT_FOR_DELIVERY' || created.status === 'PICKUP'
+            : created.status === 'OUT_FOR_DELIVERY' || created.status === 'PICKED_UP'
             ? 'In Transit'
-            : 'Scheduled';
+            : '';
         const newOrder = {
           id: created._id,
           date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          items: gallonType === 'SLIM' ? '3 Gallon Slim (Refill)' : '5 Gallon Round (Refill)',
+          items: gallonLabel,
           qty: created.water_quantity,
           total: created.total_amount,
           status,
@@ -477,11 +478,7 @@ const Order = () => {
                     </div>
                     <div>
                       <p className="font-black text-base text-slate-900">
-                        {containerType === '5-gal-new'
-                          ? '5 Gallon Round (New container)'
-                          : containerType === '3-gal-refill'
-                          ? '3 Gallon Slim (Refill)'
-                          : '5 Gallon Round (Refill)'}
+                        {gallonLabel}
                       </p>
                       <p className="text-[12px] text-slate-400 font-semibold mt-1">
                         Qty {quantity} •{' '}
