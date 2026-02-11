@@ -12,6 +12,11 @@ import ContactUs from './page/landing/ContactUs'
 import StaffOrders from './page/staff/StaffOrders'
 import RiderOrders from './page/RiderOrders'
 import { AuthProvider } from './contexts/AuthProvider'
+import AdminAuth from './page/admin/AdminAuth'
+import AdminDashboard from './page/admin/AdminDashboard'
+import AdminRoute from './components/admin/AdminRoute'
+import StaffRoute from './components/staff/StaffRoute'
+import RiderRoute from './components/rider/RiderRoute'
 
 
 createRoot(document.getElementById('root')).render(
@@ -25,9 +30,32 @@ createRoot(document.getElementById('root')).render(
             <Route path='/home' element={<Home />} />
             <Route path='/orders' element={<Order />} />
             <Route path='/messages' element={<Message />} />
-            <Route path='/delivery' element={<Delivery />} />
-            <Route path='/staff/orders' element={<StaffOrders />} />
-            <Route path='/rider/orders' element={<RiderOrders />} />
+            <Route path='/customer/delivery' element={<Delivery />} />
+            <Route
+              path='/staff/orders'
+              element={(
+                <StaffRoute>
+                  <StaffOrders />
+                </StaffRoute>
+              )}
+            />
+            <Route
+              path='/rider/orders'
+              element={(
+                <RiderRoute>
+                  <RiderOrders />
+                </RiderRoute>
+              )}
+            />
+            <Route path='/admin/auth' element={<AdminAuth />} />
+            <Route
+              path='/admin/dashboard'
+              element={(
+                <AdminRoute>
+                  <AdminDashboard />
+                </AdminRoute>
+              )}
+            />
           </Routes>
         </Router>
     </AuthProvider>

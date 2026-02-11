@@ -12,11 +12,13 @@ const OrderCard = ({
   onToggleSelect,
   onAccept,
   onAssignRider,
+  footer,
 }) => {
   const statusColors = getStatusColors(order.status);
   const isPending = order.status === OrderStatus.PENDING;
   const isConfirmed = order.status === OrderStatus.CONFIRMED;
-  const isAssignable = order.status === OrderStatus.CONFIRMED;
+  const isAssignable = order.status === OrderStatus.CONFIRMED && !order.assignedRiderId;
+  const isAlreadyAssigned = order.status === OrderStatus.CONFIRMED && order.assignedRiderId;
   const gallonTypeLabel = order.gallonType
     ? (String(order.gallonType).toUpperCase() === 'SLIM'
       ? 'Slim'
@@ -113,6 +115,13 @@ const OrderCard = ({
               Assign Rider
             </button>
           </>
+        ) : isAlreadyAssigned ? (
+          <button
+            disabled
+            className="flex-1 bg-slate-100 text-slate-500 px-4 py-2.5 rounded-xl font-semibold text-sm border-2 border-slate-200"
+          >
+            Assigned
+          </button>
         ) : (
           <button
             disabled
@@ -128,6 +137,18 @@ const OrderCard = ({
           <span className="inline-block px-3 py-1.5 bg-green-100 text-green-700 text-xs font-semibold rounded-lg">
             Confirmed
           </span>
+        </div>
+      )}
+      {isAlreadyAssigned && (
+        <div className="mt-3">
+          <span className="inline-block px-3 py-1.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg">
+            Assigned {order.assignedRider ? `to ${order.assignedRider}` : ''}
+          </span>
+        </div>
+      )}
+      {footer && (
+        <div className="mt-4">
+          {footer}
         </div>
       )}
     </div>
