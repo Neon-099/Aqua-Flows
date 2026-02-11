@@ -1,5 +1,5 @@
 // page/staff/StaffOrders.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Droplet,
@@ -12,8 +12,12 @@ import AssignRiderPanel from '../../components/AssignRiderPanel';
 import { OrderStatus, RiderStatus } from '../../constants/staff.constants';
 import { apiRequest } from '../../utils/api';
 import { formatOrderId, getInitials } from '../../utils/staffFormatters';
+import { useAuth } from '../../contexts/AuthProvider';
+
 
 const StaffOrders = () => {
+  const { user } = useAuth()
+
   const [orders, setOrders] = useState([]);
   const [riders, setRiders] = useState([]);
   const [selectedPendingIds, setSelectedPendingIds] = useState(new Set());
@@ -22,6 +26,9 @@ const StaffOrders = () => {
   const [assignError, setAssignError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [dispatchMinutesById, setDispatchMinutesById] = useState({});
+  const [now, setNow] = useState(Date.now());
+  const dispatchingRef = useRef(new Set());
 
   // Auto-decrement timer for pending orders
   useEffect(() => {
@@ -40,13 +47,19 @@ const StaffOrders = () => {
   }, []);
 
   useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
     const loadData = async () => {
       try {
         setIsLoading(true);
         setLoadError('');
 
         const [ordersRes, ridersRes] = await Promise.all([
-          apiRequest('/orders'),
+          apiRequest('/staff/orders'),
           apiRequest('/riders'),
         ]);
 
@@ -59,7 +72,12 @@ const StaffOrders = () => {
           gallonType: order.gallon_type,
           paymentMethod: order.payment_method,
           status: order.status,
+          assignedRiderId: order.assigned_rider_id || null,
           autoAccepted: Boolean(order.auto_accepted),
+          dispatchQueuedAt: order.dispatch_queued_at || null,
+          dispatchAfterMinutes: order.dispatch_after_minutes || null,
+          dispatchScheduledFor: order.dispatch_scheduled_for || null,
+          dispatchedAt: order.dispatched_at || null,
           timeRemaining: null,
           createdAt: order.created_at,
         }));
@@ -76,20 +94,37 @@ const StaffOrders = () => {
           };
         });
 
+        if (!isMounted) return;
         setOrders(mappedOrders);
         setRiders(mappedRiders);
       } catch (err) {
+        if (!isMounted) return;
         setLoadError(err?.message || 'Failed to load orders');
       } finally {
+        if (!isMounted) return;
         setIsLoading(false);
       }
     };
 
     loadData();
+    const interval = setInterval(loadData, 10000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const handleAcceptOrder = async (orderId) => {
+    let snapshot = null;
     try {
+      setOrders((prev) => {
+        snapshot = prev;
+        return prev.map((order) =>
+          order.id === orderId
+            ? { ...order, status: OrderStatus.CONFIRMED, timeRemaining: null }
+            : order
+        );
+      });
       const res = await apiRequest(`/orders/${orderId}/confirm`, 'PUT');
       const updated = res?.data;
       if (updated) {
@@ -112,6 +147,7 @@ const StaffOrders = () => {
         return next;
       });
     } catch (err) {
+      if (snapshot) setOrders(snapshot);
       setAssignError(err?.message || 'Failed to accept order');
     }
   };
@@ -125,7 +161,16 @@ const StaffOrders = () => {
     const selectedIds = Array.from(selectedAssignIds);
 
     if (rider && selectedIds.length > 0) {
+      let snapshot = null;
       try {
+        setOrders((prev) => {
+          snapshot = prev;
+          return prev.map((o) =>
+            selectedAssignIds.has(o.id)
+              ? { ...o, assignedRiderId: rider.id, assignedRider: rider.name }
+              : o
+          );
+        });
         const results = await Promise.all(
           selectedIds.map((orderId) =>
             apiRequest(`/orders/${orderId}/assign_rider`, 'PUT', { rider_id: riderId })
@@ -143,6 +188,7 @@ const StaffOrders = () => {
               status: match.data?.status || o.status,
               timeRemaining: null,
               assignedRider: rider.name,
+              assignedRiderId: rider.id,
             };
           })
         );
@@ -152,6 +198,7 @@ const StaffOrders = () => {
         setSelectedAssignIds(new Set());
         handleCloseAssignPanel();
       } catch (err) {
+        if (snapshot) setOrders(snapshot);
         setAssignError(err?.message || 'Failed to assign rider');
       }
     }
@@ -159,6 +206,14 @@ const StaffOrders = () => {
 
   const pendingOrders = orders.filter((o) => o.status === OrderStatus.PENDING);
   const confirmedOrders = orders.filter((o) => o.status === OrderStatus.CONFIRMED);
+  const assignableOrders = confirmedOrders.filter((o) => !o.assignedRiderId);
+  const assignedOrders = confirmedOrders.filter((o) => o.assignedRiderId);
+  const pickedUpOrders = orders.filter((o) => o.status === OrderStatus.PICKED_UP);
+  const outForDeliveryOrders = orders.filter((o) => o.status === OrderStatus.OUT_FOR_DELIVERY);
+  const deliveredOrders = orders.filter((o) => o.status === OrderStatus.DELIVERED);
+  const pendingPaymentOrders = orders.filter((o) => o.status === OrderStatus.PENDING_PAYMENT);
+  const completedOrders = orders.filter((o) => o.status === OrderStatus.COMPLETED);
+  const cancelledOrders = orders.filter((o) => o.status === OrderStatus.CANCELLED);
   const pendingOrdersCount = pendingOrders.length;
   const selectedAssignGallons = orders.reduce(
     (total, order) => (selectedAssignIds.has(order.id) ? total + order.gallons : total),
@@ -181,7 +236,7 @@ const StaffOrders = () => {
 
   const toggleAssignSelect = (orderId) => {
     const order = orders.find((o) => o.id === orderId);
-    if (!order) return;
+    if (!order || order.assignedRiderId) return;
 
     setSelectedAssignIds((prev) => {
       const next = new Set(prev);
@@ -214,7 +269,7 @@ const StaffOrders = () => {
   const handleSelectAllAssign = () => {
     let total = 0;
     const next = new Set();
-    confirmedOrders.forEach((order) => {
+    assignableOrders.forEach((order) => {
       if (total + order.gallons <= 30) {
         total += order.gallons;
         next.add(order.id);
@@ -232,19 +287,22 @@ const StaffOrders = () => {
   const handleAcceptSelected = async () => {
     if (selectedPendingIds.size === 0) return;
     const ids = Array.from(selectedPendingIds);
+    let snapshot = null;
     try {
-      await Promise.all(
-        ids.map((orderId) => apiRequest(`/orders/${orderId}/confirm`, 'PUT'))
-      );
-      setOrders((prevOrders) =>
-        prevOrders.map((order) =>
+      setOrders((prev) => {
+        snapshot = prev;
+        return prev.map((order) =>
           selectedPendingIds.has(order.id)
             ? { ...order, status: OrderStatus.CONFIRMED, timeRemaining: null }
             : order
-        )
+        );
+      });
+      await Promise.all(
+        ids.map((orderId) => apiRequest(`/orders/${orderId}/confirm`, 'PUT'))
       );
       setSelectedPendingIds(new Set());
     } catch (err) {
+      if (snapshot) setOrders(snapshot);
       setAssignError(err?.message || 'Failed to accept selected orders');
     }
   };
@@ -252,7 +310,7 @@ const StaffOrders = () => {
   const handleOpenAssignPanel = (orderId) => {
     if (!orderId) return;
     const order = orders.find((o) => o.id === orderId);
-    if (!order || order.status !== OrderStatus.CONFIRMED) return;
+    if (!order || order.status !== OrderStatus.CONFIRMED || order.assignedRiderId) return;
 
     if (order.gallons > 30) {
       setAssignError('Order exceeds 30 gallons and cannot be assigned in bulk.');
@@ -271,6 +329,105 @@ const StaffOrders = () => {
     }
     setShowAssignPanel(true);
   };
+
+  const getDispatchRemaining = (order) => {
+    if (!order.dispatchScheduledFor) return null;
+    const target = new Date(order.dispatchScheduledFor).getTime();
+    const diff = Math.max(0, Math.ceil((target - now) / 1000));
+    return diff;
+  };
+
+  const handleQueueDispatch = async (orderId) => {
+    const minutes = Number(dispatchMinutesById[orderId] || 0);
+    if (!minutes || minutes <= 0) {
+      setAssignError('Enter dispatch minutes greater than 0.');
+      return;
+    }
+    let snapshot = null;
+    try {
+      const nowTime = new Date();
+      const scheduledFor = new Date(nowTime.getTime() + minutes * 60 * 1000);
+      setOrders((prev) => {
+        snapshot = prev;
+        return prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                dispatchQueuedAt: nowTime.toISOString(),
+                dispatchAfterMinutes: minutes,
+                dispatchScheduledFor: scheduledFor.toISOString(),
+              }
+            : o
+        );
+      });
+      const res = await apiRequest(`/orders/${orderId}/queue_dispatch`, 'PUT', { minutes });
+      const updated = res?.data;
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                dispatchQueuedAt: updated?.dispatch_queued_at || o.dispatchQueuedAt,
+                dispatchAfterMinutes: updated?.dispatch_after_minutes || o.dispatchAfterMinutes,
+                dispatchScheduledFor: updated?.dispatch_scheduled_for || o.dispatchScheduledFor,
+              }
+            : o
+        )
+      );
+      setAssignError('');
+    } catch (err) {
+      if (snapshot) setOrders(snapshot);
+      setAssignError(err?.message || 'Failed to queue dispatch');
+    }
+  };
+
+  const handleDispatchNow = async (orderId) => {
+    let snapshot = null;
+    try {
+      setOrders((prev) => {
+        snapshot = prev;
+        return prev.map((o) =>
+          o.id === orderId
+            ? { ...o, status: OrderStatus.OUT_FOR_DELIVERY, dispatchedAt: new Date().toISOString() }
+            : o
+        );
+      });
+      const res = await apiRequest(`/orders/${orderId}/dispatch`, 'PUT');
+      const updated = res?.data;
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                status: updated?.status || o.status,
+                dispatchedAt: updated?.dispatched_at || o.dispatchedAt,
+              }
+            : o
+        )
+      );
+      setAssignError('');
+    } catch (err) {
+      if (snapshot) setOrders(snapshot);
+      setAssignError(err?.message || 'Failed to dispatch order');
+    }
+  };
+
+  useEffect(() => {
+    const dueOrders = orders.filter(
+      (o) =>
+        o.status === OrderStatus.PICKED_UP &&
+        o.dispatchScheduledFor &&
+        getDispatchRemaining(o) === 0
+    );
+
+    dueOrders.forEach((order) => {
+      if (dispatchingRef.current.has(order.id)) return;
+      dispatchingRef.current.add(order.id);
+      handleDispatchNow(order.id).finally(() => {
+        dispatchingRef.current.delete(order.id);
+      });
+    });
+  }, [orders, now]);
 
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">
@@ -296,13 +453,13 @@ const StaffOrders = () => {
 
         <div className="flex items-center gap-4">
           <div className="text-right">
-            <p className="text-sm font-black text-slate-900 leading-none">Juan Dela Cruz</p>
+            <p className="text-sm font-black text-slate-900 leading-none">{user?.name}</p>
             <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">
               Staff Operator
             </p>
           </div>
           <div className="w-10 h-10 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold">
-            JD
+            {user?.name ? user.name.slice(0, 2).toUpperCase() : "ST"}
           </div>
         </div>
       </nav>
@@ -400,30 +557,257 @@ const StaffOrders = () => {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {orders.map((order) => (
-                  <OrderCard
-                    key={order.id}
-                    order={order}
-                    isSelected={selectedPendingIds.has(order.id) || selectedAssignIds.has(order.id)}
-                    isSelectable={
-                      order.status === OrderStatus.PENDING || order.status === OrderStatus.CONFIRMED
-                    }
-                    isChecked={
-                      order.status === OrderStatus.PENDING
-                        ? selectedPendingIds.has(order.id)
-                        : selectedAssignIds.has(order.id)
-                    }
-                    selectionLabel={
-                      order.status === OrderStatus.PENDING ? 'Select to accept' : 'Select to assign'
-                    }
-                    onToggleSelect={
-                      order.status === OrderStatus.PENDING ? togglePendingSelect : toggleAssignSelect
-                    }
-                    onAccept={handleAcceptOrder}
-                    onAssignRider={handleOpenAssignPanel}
-                  />
-                ))}
+              <div className="space-y-8">
+                {pendingOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Pending
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {pendingOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={selectedPendingIds.has(order.id)}
+                          isSelectable
+                          isChecked={selectedPendingIds.has(order.id)}
+                          selectionLabel="Select to accept"
+                          onToggleSelect={togglePendingSelect}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {assignableOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Confirmed (Unassigned)
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {assignableOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={selectedAssignIds.has(order.id)}
+                          isSelectable
+                          isChecked={selectedAssignIds.has(order.id)}
+                          selectionLabel="Select to assign"
+                          onToggleSelect={toggleAssignSelect}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {assignedOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Assigned
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {assignedOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={false}
+                          isSelectable={false}
+                          isChecked={false}
+                          selectionLabel=""
+                          onToggleSelect={() => {}}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {pickedUpOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Picked Up
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {pickedUpOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={false}
+                          isSelectable={false}
+                          isChecked={false}
+                          selectionLabel=""
+                          onToggleSelect={() => {}}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                          footer={(
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+                              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                                <span>Dispatch Queue</span>
+                                {order.dispatchScheduledFor && (
+                                  <span>
+                                    {getDispatchRemaining(order)}s remaining
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={dispatchMinutesById[order.id] ?? ''}
+                                  onChange={(e) =>
+                                    setDispatchMinutesById((prev) => ({
+                                      ...prev,
+                                      [order.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Minutes"
+                                  className="w-20 px-2 py-1 rounded-lg border border-slate-200 text-xs"
+                                />
+                                <button
+                                  onClick={() => handleQueueDispatch(order.id)}
+                                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                                >
+                                  Queue
+                                </button>
+                                <button
+                                  onClick={() => handleDispatchNow(order.id)}
+                                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900"
+                                >
+                                  Dispatch Now
+                                </button>
+                              </div>
+                              {order.dispatchScheduledFor && (
+                                <p className="text-[11px] text-slate-500">
+                                  Scheduled for {new Date(order.dispatchScheduledFor).toLocaleTimeString()}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {outForDeliveryOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Out For Delivery
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {outForDeliveryOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={false}
+                          isSelectable={false}
+                          isChecked={false}
+                          selectionLabel=""
+                          onToggleSelect={() => {}}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {deliveredOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Delivered
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {deliveredOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={false}
+                          isSelectable={false}
+                          isChecked={false}
+                          selectionLabel=""
+                          onToggleSelect={() => {}}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {pendingPaymentOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Pending Payment
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {pendingPaymentOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={false}
+                          isSelectable={false}
+                          isChecked={false}
+                          selectionLabel=""
+                          onToggleSelect={() => {}}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {completedOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Completed
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {completedOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={false}
+                          isSelectable={false}
+                          isChecked={false}
+                          selectionLabel=""
+                          onToggleSelect={() => {}}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {cancelledOrders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
+                      Cancelled
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {cancelledOrders.map((order) => (
+                        <OrderCard
+                          key={order.id}
+                          order={order}
+                          isSelected={false}
+                          isSelectable={false}
+                          isChecked={false}
+                          selectionLabel=""
+                          onToggleSelect={() => {}}
+                          onAccept={handleAcceptOrder}
+                          onAssignRider={handleOpenAssignPanel}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {orders.length === 0 && (
