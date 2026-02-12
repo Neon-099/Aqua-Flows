@@ -64,27 +64,6 @@ export const listUsers = async ({
 
 export const createUser = async (payload) => {
   const user = await User.create(payload);
-  if (user.role === USER_ROLE.CUSTOMER) {
-    await Customer.create({
-      user_id: user._id,
-      default_address: user.address,
-    });
-  }
-  if (user.role === USER_ROLE.RIDER) {
-    await Rider.create({
-      user_id: user._id,
-    });
-  }
-  if (user.role === USER_ROLE.STAFF) {
-    await Staff.create({
-      user_id: user._id,
-    });
-  }
-  if (user.role === USER_ROLE.ADMIN) {
-    await Admin.create({
-      user_id: user._id,
-    });
-  }
   return user;
 };
 
@@ -105,51 +84,6 @@ export const updateUser = async (id, payload) => {
   });
 
   await user.save();
-
-  if (payload.role && payload.role !== previousRole) {
-    if (payload.role === USER_ROLE.CUSTOMER) {
-      await Customer.findOneAndUpdate(
-        { user_id: user._id },
-        { default_address: user.address },
-        { upsert: true }
-      );
-      await Rider.deleteOne({ user_id: user._id });
-      await Staff.deleteOne({ user_id: user._id });
-      await Admin.deleteOne({ user_id: user._id });
-    } else if (payload.role === USER_ROLE.RIDER) {
-      await Rider.findOneAndUpdate(
-        { user_id: user._id },
-        { user_id: user._id },
-        { upsert: true }
-      );
-      await Customer.deleteOne({ user_id: user._id });
-      await Staff.deleteOne({ user_id: user._id });
-      await Admin.deleteOne({ user_id: user._id });
-    } else if (payload.role === USER_ROLE.STAFF) {
-      await Staff.findOneAndUpdate(
-        { user_id: user._id },
-        { user_id: user._id },
-        { upsert: true }
-      );
-      await Customer.deleteOne({ user_id: user._id });
-      await Rider.deleteOne({ user_id: user._id });
-      await Admin.deleteOne({ user_id: user._id });
-    } else if (payload.role === USER_ROLE.ADMIN) {
-      await Admin.findOneAndUpdate(
-        { user_id: user._id },
-        { user_id: user._id },
-        { upsert: true }
-      );
-      await Customer.deleteOne({ user_id: user._id });
-      await Rider.deleteOne({ user_id: user._id });
-      await Staff.deleteOne({ user_id: user._id });
-    } else {
-      await Customer.deleteOne({ user_id: user._id });
-      await Rider.deleteOne({ user_id: user._id });
-      await Staff.deleteOne({ user_id: user._id });
-      await Admin.deleteOne({ user_id: user._id });
-    }
-  }
 
   return user;
 };
