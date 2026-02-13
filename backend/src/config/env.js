@@ -37,5 +37,11 @@ export const env = {
   BREVO_SENDER_EMAIL: process.env.BREVO_SENDER_EMAIL,
   BREVO_SENDER_NAME: process.env.BREVO_SENDER_NAME,
   NODE_ENV: process.env.NODE_ENV || 'development',
-  CLIENT_URL: process.env.CLIENT_URL
+  CLIENT_URL: process.env.CLIENT_URL,
+  CLIENT_URLS: process.env.CLIENT_URLS,
+  FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
+  FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL,
+  FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY
+    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+    : undefined
 };

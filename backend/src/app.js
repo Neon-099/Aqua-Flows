@@ -9,6 +9,7 @@ import riderRouter from './routes/rider.route.js';
 import webhookRouter from './routes/webhook.route.js';
 import adminRouter from './routes/admin.route.js';
 import staffRouter from './routes/staff.route.js';
+import fcmRouter from './routes/fcm.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 import { env } from './config/env.js';
 
@@ -74,6 +75,7 @@ app.use('/api/v1/riders', riderRouter)
 app.use('/api/v1/webhooks', webhookRouter)
 app.use('/api/v1/admin', adminRouter)
 app.use('/api/v1/staff', staffRouter)
+app.use('/api/v1/fcm', fcmRouter)
 
 app.use(errorHandler);
 
