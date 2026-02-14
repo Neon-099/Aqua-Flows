@@ -10,6 +10,7 @@ import webhookRouter from './routes/webhook.route.js';
 import adminRouter from './routes/admin.route.js';
 import staffRouter from './routes/staff.route.js';
 import fcmRouter from './routes/fcm.route.js';
+import chatRouter from './routes/chat.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 import { env } from './config/env.js';
 
@@ -76,6 +77,8 @@ app.use('/api/v1/webhooks', webhookRouter)
 app.use('/api/v1/admin', adminRouter)
 app.use('/api/v1/staff', staffRouter)
 app.use('/api/v1/fcm', fcmRouter)
+app.use('/api/v1/chat', chatRouter)
+
 
 app.use(errorHandler);
 
