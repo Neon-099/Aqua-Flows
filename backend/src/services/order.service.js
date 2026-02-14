@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Order from '../models/Order.model.js';
 import Customer from '../models/Customer.model.js';
 import Rider from '../models/Rider.model.js';
+import User from '../models/User.model.js';
 import Payment from '../models/Payment.model.js';
 import PaymentEvent from '../models/PaymentEvent.model.js';
 import OrderStatusHistory from '../models/OrderStatusHistory.model.js';
@@ -43,6 +44,46 @@ const resolveRiderId = async (user) => {
 const isTransientTxnError = (err) =>
   err?.errorLabels?.includes('TransientTransactionError') ||
   /write conflict/i.test(err?.message || '');
+
+const enrichOrdersWithProfiles = async (orders) => {
+  const rows = (orders || []).map((order) => (typeof order?.toObject === 'function' ? order.toObject() : order));
+  if (!rows.length) return rows;
+
+  const customerIds = [...new Set(rows.map((o) => o.customer_id).filter(Boolean))];
+  const riderIds = [...new Set(rows.map((o) => o.assigned_rider_id).filter(Boolean))];
+
+  const [customers, riders] = await Promise.all([
+    Customer.find({ _id: { $in: customerIds } }).select('_id user_id default_address'),
+    Rider.find({ _id: { $in: riderIds } }).select('_id user_id'),
+  ]);
+
+  const customerById = new Map(customers.map((c) => [c._id, c]));
+  const riderById = new Map(riders.map((r) => [r._id, r]));
+
+  const userIds = [
+    ...new Set([
+      ...customers.map((c) => c.user_id).filter(Boolean),
+      ...riders.map((r) => r.user_id).filter(Boolean),
+    ]),
+  ];
+  const users = await User.find({ _id: { $in: userIds } }).select('_id name address');
+  const userById = new Map(users.map((u) => [u._id, u]));
+
+  return rows.map((order) => {
+    const customer = customerById.get(order.customer_id);
+    const customerUser = customer ? userById.get(customer.user_id) : null;
+    const rider = order.assigned_rider_id ? riderById.get(order.assigned_rider_id) : null;
+    const riderUser = rider ? userById.get(rider.user_id) : null;
+
+    return {
+      ...order,
+      customer_name: customerUser?.name || null,
+      customer_address: customer?.default_address || customerUser?.address || null,
+      assigned_rider_name: riderUser?.name || null,
+      assigned_rider_user_id: riderUser?._id || null,
+    };
+  });
+};
 
 export const createOrder = async ({ user, payload }) => {
   const { customer_id, water_quantity, total_amount, payment_method, gallon_type } = payload;
@@ -158,25 +199,29 @@ export const listOrdersForRider = async ({ user, riderId }) => {
         { status: ORDER_STATUS.PENDING, assigned_rider_id: null },
       ],
     }).sort({ status: 1, updated_at: -1 });
-    return results.map((order) => {
+    const enriched = await enrichOrdersWithProfiles(results);
+    return enriched.map((order) => {
       const assignedToMe = Boolean(order.assigned_rider_id && riderIds.includes(order.assigned_rider_id));
-      return { ...order.toObject(), assigned_to_me: assignedToMe };
+      return { ...order, assigned_to_me: assignedToMe };
     });
   }
 
   if (user.role === USER_ROLE.CUSTOMER || user.role === USER_ROLE.USER) {
     const customer = await Customer.findOne({ user_id: user._id });
     if (!customer) throwError(404, 'Customer not found');
-    return await Order.find({ customer_id: customer._id })
+    const results = await Order.find({ customer_id: customer._id })
       .sort({ created_at: -1 });
+    return enrichOrdersWithProfiles(results);
   }
 
   if (riderId) {
-    return await Order.find({ assigned_rider_id: riderId })
+    const results = await Order.find({ assigned_rider_id: riderId })
       .sort({ status: 1, updated_at: -1 });
+    return enrichOrdersWithProfiles(results);
   }
 
-  return await Order.find().sort({ created_at: -1 });
+  const results = await Order.find().sort({ created_at: -1 });
+  return enrichOrdersWithProfiles(results);
 };
 
 export const listOrdersForStaff = async ({ user }) => {
@@ -184,7 +229,8 @@ export const listOrdersForStaff = async ({ user }) => {
     throwError(403, 'Not authorized');
   }
 
-  return await Order.find().sort({ created_at: -1 });
+  const results = await Order.find().sort({ created_at: -1 });
+  return enrichOrdersWithProfiles(results);
 };
 
 export const cancelOrder = async ({ user, orderId }) => {
