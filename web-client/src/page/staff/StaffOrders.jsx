@@ -1,6 +1,6 @@
 // page/staff/StaffOrders.jsx
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   Droplet,
   ClipboardList,
@@ -17,6 +17,7 @@ import { useAuth } from '../../contexts/AuthProvider';
 
 const StaffOrders = () => {
   const { user } = useAuth()
+  const location = useLocation()
 
   const [orders, setOrders] = useState([]);
   const [riders, setRiders] = useState([]);
@@ -73,6 +74,7 @@ const StaffOrders = () => {
           paymentMethod: order.payment_method,
           status: order.status,
           assignedRiderId: order.assigned_rider_id || null,
+          assignedRider: order.assigned_rider_name || null,
           autoAccepted: Boolean(order.auto_accepted),
           dispatchQueuedAt: order.dispatch_queued_at || null,
           dispatchAfterMinutes: order.dispatch_after_minutes || null,
@@ -429,6 +431,11 @@ const StaffOrders = () => {
     });
   }, [orders, now]);
 
+  const navButtonClass = (isActive) =>
+    isActive
+      ? 'flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all'
+      : 'flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all';
+
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">
       {/* Top Navigation */}
@@ -440,12 +447,12 @@ const StaffOrders = () => {
 
         <div className="hidden md:flex gap-4">
           <Link to="/staff/orders">
-            <button className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all">
+            <button className={navButtonClass(location.pathname === '/staff/orders')}>
               <ClipboardList size={18} /> Orders
             </button>
           </Link>
           <Link to="/staff/messages">
-            <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
+            <button className={navButtonClass(location.pathname === '/staff/messages')}>
               <MessageSquare size={18} /> Messages
             </button>
           </Link>

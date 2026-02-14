@@ -10,6 +10,7 @@ import Order from './page/Order'
 import Auth from './page/Auth'
 import ContactUs from './page/landing/ContactUs'
 import StaffOrders from './page/staff/StaffOrders'
+import StaffMessages from './page/staff/StaffMessages'
 import RiderOrders from './page/RiderOrders'
 import { AuthProvider } from './contexts/AuthProvider'
 import AdminAuth from './page/admin/AdminAuth'
@@ -40,10 +41,26 @@ createRoot(document.getElementById('root')).render(
               )}
             />
             <Route
+              path='/staff/messages'
+              element={(
+                <StaffRoute>
+                  <StaffMessages />
+                </StaffRoute>
+              )}
+            />
+            <Route
               path='/rider/orders'
               element={(
                 <RiderRoute>
                   <RiderOrders />
+                </RiderRoute>
+              )}
+            />
+            <Route
+              path='/rider/messages'
+              element={(
+                <RiderRoute>
+                  <Message />
                 </RiderRoute>
               )}
             />
