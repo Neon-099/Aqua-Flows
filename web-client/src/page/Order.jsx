@@ -423,7 +423,7 @@ const Order = () => {
                   </div>
                 </section>
               </div>
-
+                        
               {/* Right: summary + payment */}
               <aside className="p-8 space-y-6 bg-slate-50/60">
                 {/* PAYMENT METHOD */}
