@@ -16,6 +16,19 @@ export const createOrder = async (req, res, next) => {
   }
 };
 
+const emitOrderUpdate = (req, order, extra = {}) => {
+  const io = req.app.get('io');
+  if (!io || !order?._id) return;
+  io.to(`order:${order._id}`).emit('order:update', {
+    orderId: order._id,
+    status: order.status,
+    paymentStatus: order.payment_status || null,
+    timestamp: new Date().toISOString(),
+    ...extra,
+  });
+};
+
+
 export const getOrderById = async (req, res, next) => {
   try {
     const result = await orderService.getOrderById({
@@ -73,6 +86,7 @@ export const confirmOrder = async (req, res, next) => {
       orderId: req.params.id,
     });
     return ok(res, result);
+    emitOrderUpdate(req, result, { source: 'confirmOrder' });
   } catch (err) {
     next(err);
   }
