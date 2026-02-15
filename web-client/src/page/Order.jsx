@@ -16,6 +16,29 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import { useAuth } from '../contexts/AuthProvider';
+import Header from '../components/Header'
+
+const getOrderStatusLabel = (status) => {
+  if (status === 'DELIVERED' || status === 'COMPLETED') return 'Delivered';
+  if (status === 'OUT_FOR_DELIVERY' || status === 'PICKED_UP') return 'In Transit';
+  if (status === 'PENDING' || status === 'CONFIRMED') return 'Pending';
+  return status || 'Pending';
+};
+
+const getDisplayEtaText = (order) => {
+  if (!order) return 'ETA unavailable';
+  if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
+    const min = Number(order.eta_minutes_min);
+    const max = Number(order.eta_minutes_max);
+    if (Number.isFinite(min) && Number.isFinite(max)) {
+      const low = Math.min(min, max);
+      const high = Math.max(min, max);
+      const picked = Math.floor(Math.random() * (high - low + 1)) + low;
+      return `${picked} mins`;
+    }
+  }
+  return order.eta_text || getOrderStatusLabel(order.status);
+};
 
 const Order = () => {
   const { user } = useAuth();
@@ -37,18 +60,14 @@ const Order = () => {
   const total = subtotal + deliveryFee;
 
   useEffect(() => {
+    let mounted = true;
     const loadOrders = async () => {
       try {
         setOrdersError('');
         const res = await apiRequest('/orders');
         const mapped = (res?.data || []).map((order) => {
           const createdAt = order.created_at ? new Date(order.created_at) : new Date();
-          const status =
-            order.status === 'DELIVERED' || order.status === 'COMPLETED'
-              ? 'Delivered'
-              : order.status === 'OUT_FOR_DELIVERY' || order.status === 'PICKED_UP'
-              ? 'In Transit'
-              : order.status === 'PENDING' || order.status === 'CONFIRMED'
+          const status = getOrderStatusLabel(order.status);
           return {
             id: order._id,
             date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
@@ -58,15 +77,23 @@ const Order = () => {
             status,
             name: user?.name || user.name,
             address: user?.address || user.address || 'Address unavailable',
+            eta: getDisplayEtaText(order),
           };
         });
+        if (!mounted) return;
         setOrders(mapped);
       } catch (err) {
+        if (!mounted) return;
         setOrdersError(err?.message || 'Failed to load orders');
       }
     };
 
     loadOrders();
+    const interval = setInterval(loadOrders, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, [user?.address, user?.name]);
 
   console.log('Order: ', orders);
@@ -113,11 +140,7 @@ const Order = () => {
       if (created) {
         const createdAt = created.created_at ? new Date(created.created_at) : new Date();
         const status =
-          created.status === 'DELIVERED' || created.status === 'COMPLETED'
-            ? 'Delivered'
-            : created.status === 'OUT_FOR_DELIVERY' || created.status === 'PICKED_UP'
-            ? 'In Transit'
-            : '';
+          getOrderStatusLabel(created.status);
         const newOrder = {
           id: created._id,
           date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
@@ -125,7 +148,7 @@ const Order = () => {
           qty: created.water_quantity,
           total: created.total_amount,
           status,
-          eta: created.eta_text || status,
+          eta: getDisplayEtaText(created),
           address: user?.address || 'Address unavailable',
         };
         setOrders((prev) => [newOrder, ...prev]);
@@ -151,53 +174,20 @@ const Order = () => {
 
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">
-      {/* Top Navigation */}
-      <nav className="flex items-center justify-between px-12 py-4 bg-white border-b border-slate-100 shrink-0 w-full">
-        <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl">
-          <Droplet fill="currentColor" size={28} />
-          <span>AquaFlow</span>
-        </div>
-
-        <div className="hidden md:flex gap-4">
-          <Link to="/home">
-            <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
-              <LayoutDashboard size={18} /> Dashboard
-            </button>
-          </Link>
-          <Link to="/orders">
-            <button className="flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all">
-              <ClipboardList size={18} /> Orders
-            </button>
-          </Link>
-          <Link to="/messages">
-            <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
-              <MessageSquare size={18} /> Messages
-            </button>
-          </Link>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-sm font-black text-slate-900 leading-none">Sarah Johnson</p>
-            <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">
-              Household Account
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-md overflow-hidden">
-            <img src="/api/placeholder/40/40" alt="Sarah" />
-          </div>
-        </div>
-      </nav>
+      {/* Standardized Navigation */}
+      <Header 
+        name={user?.name || 'customer'}
+        image={user?.image || 'customer'}/>
 
       {/* Background + Card Layout */}
       <main className="flex-1 w-full relative overflow-hidden">
         {/* soft gradient background */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-50 via-slate-50 to-slate-100" />
 
-        <div className="relative z-10 max-w-6xl mx-auto px-6 lg:px-12 py-10 lg:py-16 grid gap-10 lg:grid-cols-[1.2fr,1fr]">
+        <div className="relative z-10 max-w-6xl mx-auto px-12 py-8 grid gap-10 lg:grid-cols-[1.2fr,1fr]">
           {/* Left column: intro + CTA card */}
           <section className="space-y-8">
-            <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 shadow-sm border border-slate-100">
+            <div className="bg-white/80 backdrop-blur-sm rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
               <p className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold mb-4">
                 <Truck size={14} />
                 Same-day delivery in your area
@@ -227,7 +217,7 @@ const Order = () => {
 
             {/* Address summary card */}
             <div className="grid md:grid-cols-2 gap-5">
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="bg-blue-600/90 p-3 rounded-2xl text-white shadow-lg shadow-blue-200">
                     <MapPin size={20} />
@@ -244,7 +234,7 @@ const Order = () => {
                 </p>
               </div>
 
-              <div className="bg-blue-600 text-blue-50 rounded-3xl p-6 shadow-md shadow-blue-200 flex flex-col justify-between">
+              <div className="bg-blue-600 text-blue-50 rounded-[2.5rem] p-10 shadow-md shadow-blue-200 flex flex-col justify-between">
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-blue-100 mb-2">
                     Active plan
@@ -269,7 +259,7 @@ const Order = () => {
             </div>
 
             {/* Recent orders */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.18em]">

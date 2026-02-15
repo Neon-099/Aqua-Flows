@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Send, Package, Smile, Info, CheckCheck, LayoutDashboard, ClipboardList, MessageSquare, MapPin, Archive, Inbox, CircleHelp } from 'lucide-react';
+import { Search, Send, Droplet, Smile, Info, CheckCheck, LayoutDashboard, ClipboardList, MessageSquare, MapPin, Archive, Inbox, CircleHelp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthProvider';
 import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen } from '../utils/chatApi';
 import { createChatSocket, emitWithAck } from '../utils/socket';
@@ -91,8 +91,8 @@ export default function Message() {
 
   useEffect(() => {
     if (!user?._id) return;
-    (async () => {
-      setLoadingConversations(true);
+    const loadConversations = async (showLoading = false) => {
+      if (showLoading) setLoadingConversations(true);
       try {
         const rows = await listConversations(50, { archived: showArchived });
         const mapped = rows.map((r) => mapConversation(r, user._id));
@@ -104,15 +104,20 @@ export default function Message() {
       } catch (e) {
         setError(e.message || 'Failed to load conversations');
       } finally {
-        setLoadingConversations(false);
+        if (showLoading) setLoadingConversations(false);
       }
-    })();
+    };
+    loadConversations(true);
+    const interval = setInterval(() => {
+      loadConversations(false);
+    }, 1000);
+    return () => clearInterval(interval);
   }, [user?._id, showArchived]);
 
   useEffect(() => {
     if (!selectedId || !user?._id) return;
-    (async () => {
-      setLoadingMessages(true);
+    const loadConversationMessages = async (showLoading = false) => {
+      if (showLoading) setLoadingMessages(true);
       try {
         const rows = await getMessages(selectedId, 100);
         setMessages(rows.map((m) => mapMessage(m, user._id)));
@@ -121,9 +126,14 @@ export default function Message() {
       } catch (e) {
         setError(e.message || 'Failed to load messages');
       } finally {
-        setLoadingMessages(false);
+        if (showLoading) setLoadingMessages(false);
       }
-    })();
+    };
+    loadConversationMessages(true);
+    const interval = setInterval(() => {
+      loadConversationMessages(false);
+    }, 1000);
+    return () => clearInterval(interval);
   }, [selectedId, user?._id]);
 
   useEffect(() => {
@@ -204,30 +214,61 @@ export default function Message() {
   return (
     <div className="flex flex-col h-screen w-screen bg-white text-slate-700 overflow-hidden">
       <nav className="flex items-center justify-between px-12 py-4 border-b border-slate-100 shrink-0 w-full" style={{ backgroundColor: '#E9F1F9' }}>
-        <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl"><Package size={28} /><span>AquaFlow</span></div>
+        <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl">
+          <Droplet fill="currentColor" size={28} />
+          <span>AquaFlow</span>
+        </div>
         {!isRider && (
           <div className="hidden md:flex gap-4">
-            <Link to="/home"><button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm"><LayoutDashboard size={18} /> Dashboard</button></Link>
-            <Link to="/orders"><button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm"><ClipboardList size={18} /> Orders</button></Link>
-            <Link to="/messages"><button className="flex items-center gap-2 bg-white text-slate-800 px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm"><MessageSquare size={18} /> Messages</button></Link>
-            <Link to="/customer/delivery"><button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm"><MapPin size={18} /> Track Delivery</button></Link>
+            <Link to="/home">
+              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
+                <LayoutDashboard size={18} /> Dashboard
+              </button>
+            </Link>
+            <Link to="/orders">
+              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
+                <ClipboardList size={18} /> Orders
+              </button>
+            </Link>
+            <Link to="/messages">
+              <button className="flex items-center gap-2 bg-white text-slate-800 px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all">
+                <MessageSquare size={18} /> Messages
+              </button>
+            </Link>
+            <Link to="/track">
+              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
+                <MapPin size={18} /> Track Delivery
+              </button>
+            </Link>
           </div>
         )}
         {isRider && (
           <div className="hidden md:flex gap-4">
             <Link to="/rider/orders">
-              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm">
+              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
                 <ClipboardList size={18} /> My Orders
               </button>
             </Link>
             <Link to="/rider/messages">
-              <button className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm ${location.pathname === '/rider/messages' ? 'bg-white text-slate-800' : 'bg-white/50 text-slate-600'}`}>
+              <button className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${location.pathname === '/rider/messages' ? 'bg-white text-slate-800 shadow-sm' : 'bg-white/50 text-slate-600 hover:bg-white/80'}`}>
                 <MessageSquare size={18} /> Messages
               </button>
             </Link>
           </div>
         )}
-        <div className="text-right"><p className="text-sm font-black text-slate-900">{user.name}</p><p className="text-xs text-slate-400 uppercase font-bold">{connected ? 'Realtime online' : 'Offline mode'}</p></div>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-sm font-black text-slate-900 leading-none">{user.name}</p>
+            <p className="text-xs text-slate-400 uppercase font-bold mt-1">{connected ? 'Realtime online' : 'Offline mode'}</p>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-md overflow-hidden">
+            <img 
+              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name || 'user'}`}
+              className="w-full h-full object-cover"
+              alt={user.name || 'profile'} 
+            />
+          </div>
+        </div>
       </nav>
       <main className="flex flex-1 overflow-hidden w-full">
         <div className="w-[400px] bg-white border-r border-slate-100 flex flex-col shrink-0">
