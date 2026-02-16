@@ -130,7 +130,10 @@ export const sendMessage = async ({ senderUser, conversationId, receiverId, orde
 
   conversation.lastMessage = saved.message;
   conversation.lastMessageAt = saved.timestamp;
-  await conversation.save();
+  await Conversation.updateOne(
+    { _id: conversation._id },
+    { $set: { lastMessage: saved.message, lastMessageAt: saved.timestamp } }
+  );
 
   return { conversation, saved, receiverUser };
 };
@@ -147,10 +150,11 @@ export const markConversationSeen = async ({ conversationId, userId }) => {
     { $set: { seenAt: now } }
   );
 
-  conversation.participants = conversation.participants.map((p) =>
-    p.userId === userId ? { ...p.toObject(), lastReadAt: now } : p
+  await Conversation.updateOne(
+    { _id: conversationId },
+    { $set: { 'participants.$[me].lastReadAt': now } },
+    { arrayFilters: [{ 'me.userId': userId }] }
   );
-  await conversation.save();
 
   return { conversationId, seenAt: now };
 };

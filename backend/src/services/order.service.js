@@ -1,6 +1,7 @@
 // e:\Aquaflow\backend\src\services\order.service.js
 import mongoose from 'mongoose';
 import Order from '../models/Order.model.js';
+import Counter from '../models/Counter.model.js';
 import Customer from '../models/Customer.model.js';
 import Rider from '../models/Rider.model.js';
 import User from '../models/User.model.js';
@@ -44,6 +45,15 @@ const resolveRiderId = async (user) => {
 const isTransientTxnError = (err) =>
   err?.errorLabels?.includes('TransientTransactionError') ||
   /write conflict/i.test(err?.message || '');
+
+const nextOrderCode = async (session) => {
+  const row = await Counter.findOneAndUpdate(
+    { _id: 'order_code' },
+    { $inc: { seq: 1 } },
+    { new: true, upsert: true, setDefaultsOnInsert: true, session }
+  );
+  return `ORD-${String(row.seq).padStart(6, '0')}`;
+};
 
 const enrichOrdersWithProfiles = async (orders) => {
   const rows = (orders || []).map((order) => (typeof order?.toObject === 'function' ? order.toObject() : order));
@@ -114,8 +124,10 @@ export const createOrder = async ({ user, payload }) => {
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
+    const orderCode = await nextOrderCode(session);
 
     const order = await Order.create([{
+      order_code: orderCode,
       customer_id: resolvedCustomerId,
       water_quantity,
       gallon_type,
@@ -132,7 +144,7 @@ export const createOrder = async ({ user, payload }) => {
       const intent = await createPaymentIntent({
         amount: total_amount,
         currency: 'PHP',
-        description: `Order ${order[0]._id}`,
+        description: `Order ${order[0].order_code || order[0]._id}`,
       });
 
       payment = await Payment.create([{
@@ -505,17 +517,22 @@ export const autoAssignRider = async({user, orderId, weights}) => {
 }
 
 const applyEtaToOrder = async (session, order) => {
-  const customer = await Customer.findById(order.customer_id);
+  const customer = await Customer.findById(order.customer_id).select('default_address user_id');
   if (!customer) return;
 
-  const eta = computeEtaFromAddress(customer.default_address);
+  let address = customer.default_address;
+  if (!address && customer.user_id) {
+    const customerUser = await User.findById(customer.user_id).select('address');
+    address = customerUser?.address || '';
+  }
+
+  const eta = computeEtaFromAddress(address);
   if (!eta) return;
 
   order.eta_minutes_min = eta.eta_minutes_min;
   order.eta_minutes_max = eta.eta_minutes_max;
   order.eta_text = eta.eta_text;
   order.eta_last_calculated_at = eta.eta_last_calculated_at;
-  await order.save({ session });
 };
 
 
@@ -539,6 +556,9 @@ export const riderStartDelivery = async ({ user, orderId }) => {
 
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
+    if (!order.eta_text || order.eta_minutes_min == null || order.eta_minutes_max == null) {
+      await applyEtaToOrder(session, order);
+    }
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
 
@@ -599,6 +619,9 @@ export const dispatchOrder = async ({ user, orderId }) => {
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
     order.dispatched_at = new Date();
+    if (!order.eta_text || order.eta_minutes_min == null || order.eta_minutes_max == null) {
+      await applyEtaToOrder(session, order);
+    }
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
 

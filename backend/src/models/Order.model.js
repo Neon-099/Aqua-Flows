@@ -8,6 +8,11 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: uuidv4,
   },
+  order_code: {
+    type: String,
+    index: { unique: true, sparse: true },
+    default: null,
+  },
   customer_id: {
     type: String,
     ref: 'Customer',
