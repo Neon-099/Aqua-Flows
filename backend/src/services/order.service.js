@@ -348,7 +348,7 @@ export const riderPickup = async ({ user, orderId }) => {
 
     assertTransition(order.status, ORDER_STATUS.PICKED_UP);
     order.status = ORDER_STATUS.PICKED_UP;
-    await applyEtaToOrder(session, order);
+    await applyEtaToOrder(session, order, ORDER_STATUS.PICKED_UP);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.PICKED_UP, user._id);
 
@@ -516,7 +516,7 @@ export const autoAssignRider = async({user, orderId, weights}) => {
   }
 }
 
-const applyEtaToOrder = async (session, order) => {
+const applyEtaToOrder = async (session, order, stage = ORDER_STATUS.PICKED_UP) => {
   const customer = await Customer.findById(order.customer_id).select('default_address user_id');
   if (!customer) return;
 
@@ -526,7 +526,7 @@ const applyEtaToOrder = async (session, order) => {
     address = customerUser?.address || '';
   }
 
-  const eta = computeEtaFromAddress(address);
+  const eta = computeEtaFromAddress(address, stage);
   if (!eta) return;
 
   order.eta_minutes_min = eta.eta_minutes_min;
@@ -556,9 +556,7 @@ export const riderStartDelivery = async ({ user, orderId }) => {
 
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
-    if (!order.eta_text || order.eta_minutes_min == null || order.eta_minutes_max == null) {
-      await applyEtaToOrder(session, order);
-    }
+    await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
 
@@ -619,9 +617,7 @@ export const dispatchOrder = async ({ user, orderId }) => {
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
     order.dispatched_at = new Date();
-    if (!order.eta_text || order.eta_minutes_min == null || order.eta_minutes_max == null) {
-      await applyEtaToOrder(session, order);
-    }
+    await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
 

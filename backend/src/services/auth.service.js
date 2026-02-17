@@ -1,6 +1,5 @@
 // e:\Aquaflow\backend\src\services\auth.service.js
 import User from '../models/User.model.js';
-import Customer from '../models/Customer.model.js';
 import { USER_ROLE } from '../constants/order.constants.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/token.js';
 import { sendEmail } from '../utils/sendEmail.js';
@@ -19,10 +18,6 @@ export const registerUser = async (email, password, name, address, phone) => {
     address,
     phone,
     role: USER_ROLE.CUSTOMER,
-  });
-  await Customer.create({
-    user_id: user._id,
-    default_address: address,
   });
   return {
     _id: user._id,

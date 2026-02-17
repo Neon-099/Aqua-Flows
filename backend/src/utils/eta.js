@@ -15,15 +15,31 @@ const ETA_MAP = [
   { key: 'Torres', min: 10, max: 15 }
 ];
 
-export const computeEtaFromAddress = (address = '') => {
+const STAGE_FACTORS = {
+  PICKED_UP: { min: 1.0, max: 1.2 },
+  OUT_FOR_DELIVERY: { min: 0.45, max: 0.7 },
+};
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+export const computeEtaFromAddress = (address = '', stage = 'PICKED_UP') => {
   const lower = String(address || '').toLowerCase();
   const hit = ETA_MAP.find((e) => lower.includes(String(e.key).toLowerCase()));
   if (!hit) return null;
 
+  const factor = STAGE_FACTORS[stage] || STAGE_FACTORS.PICKED_UP;
+  const rawMin = Math.round(hit.min * factor.min);
+  const rawMax = Math.round(hit.max * factor.max);
+  const adjustedMin = clamp(Math.min(rawMin, rawMax), 1, 180);
+  const adjustedMax = clamp(Math.max(rawMin, rawMax), adjustedMin, 180);
+  const etaFinalCount =
+    Math.floor(Math.random() * (adjustedMax - adjustedMin + 1)) + adjustedMin;
+
   return {
-    eta_minutes_min: hit.min,
-    eta_minutes_max: hit.max,
-    eta_text: `${hit.min}-${hit.max} minutes`,
+    eta_minutes_min: adjustedMin,
+    eta_minutes_max: adjustedMax,
+    eta_text: `${etaFinalCount} minutes`,
     eta_last_calculated_at: new Date(),
   };
 };
+
