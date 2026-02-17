@@ -71,7 +71,7 @@ const Landing = () => {
           <p className="text-xl text-slate-600 text-center max-w-2xl mx-auto mb-8 leading-relaxed">
             The simplest way to manage your home water supply. Real-time tracking, easy payments, and reliable local delivery.
           </p>
-
+        
           {/* CTA Buttons */}
           <div className="flex justify-center gap-4 mb-6">
             <Link to="/auth">
@@ -87,7 +87,7 @@ const Landing = () => {
           {/* Admin Login Link */}
           <div className="flex justify-center mb-12">
             <a href="#" className="text-slate-500 hover:text-slate-700 font-medium text-sm flex items-center gap-1 transition-colors">
-              Admin / Staff Login <span>→</span>
+            Staff Login <span>→</span>
             </a>
           </div>
 

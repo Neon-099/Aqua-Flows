@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthProvider';
 import { apiRequest } from '../utils/api';
 import { listConversations } from '../utils/chatApi';
 import Header from '../components/Header'
+import { Skeleton, SkeletonGroup } from '../components/WireframeSkeleton';
 
 const ACTIVE_ORDER_STATUSES = ['CONFIRMED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'PENDING_PAYMENT'];
 const HISTORY_STATUSES = ['COMPLETED', 'CANCELLED'];
@@ -74,6 +75,38 @@ const getCounterparty = (conversation, myUserId) => {
     role: conversation?.counterpartyLabel || 'Rider',
   };
 };
+
+const HomeWireframe = () => (
+  <main className="flex-1 overflow-y-auto px-12 py-8 grid grid-cols-12 gap-10 w-full">
+    <div className="col-span-12 lg:col-span-8 space-y-10">
+      <SkeletonGroup>
+        <Skeleton className="h-12 w-72 rounded-2xl" />
+        <Skeleton className="h-6 w-96" />
+      </SkeletonGroup>
+      <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100 space-y-8">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-36 w-full rounded-[2rem]" />
+        <div className="flex items-center justify-between p-8 bg-slate-50 rounded-[2rem] border border-slate-100">
+          <SkeletonGroup className="w-1/2">
+            <Skeleton className="h-8 w-56" />
+            <Skeleton className="h-4 w-40" />
+          </SkeletonGroup>
+          <Skeleton className="h-14 w-36 rounded-2xl" />
+        </div>
+      </div>
+      <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100 space-y-5">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-24 w-full rounded-2xl" />
+        <Skeleton className="h-24 w-full rounded-2xl" />
+      </div>
+    </div>
+    <div className="col-span-12 lg:col-span-4 space-y-10">
+      <Skeleton className="h-64 w-full rounded-[3rem]" />
+      <Skeleton className="h-96 w-full rounded-[3rem]" />
+      <Skeleton className="h-72 w-full rounded-[3rem]" />
+    </div>
+  </main>
+);
 
 const Home = () => {
   const { user } = useAuth();
@@ -152,6 +185,18 @@ const Home = () => {
   const total = Number(latestSummaryOrder?.total_amount ?? subtotal + DELIVERY_FEE);
   
   const etaText =  getDisplayEtaText(latestActiveOrder);
+
+  if (loading && orders.length === 0) {
+    return (
+      <div className="h-screen w-full bg-slate-50 font-sans text-slate-700 overflow-hidden flex flex-col">
+        <Header 
+          name={user?.name || 'customer'}
+          image={user?.image || 'customer'}
+        />
+        <HomeWireframe />
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-full bg-slate-50 font-sans text-slate-700 overflow-hidden flex flex-col">

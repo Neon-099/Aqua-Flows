@@ -10,6 +10,7 @@ import { apiRequest } from '../utils/api';
 import { listConversations } from '../utils/chatApi';
 
 import Header from '../components/Header'
+import { Skeleton, SkeletonGroup } from '../components/WireframeSkeleton';
 
 const ACTIVE_ORDER_STATUSES = ['CONFIRMED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'PENDING_PAYMENT'];
 const HISTORY_STATUSES = ['COMPLETED', 'CANCELLED'];
@@ -153,6 +154,7 @@ const Delivery = () => {
   const subtotal = orderQty * PRICE_PER_GALLON;
   const total = Number(latestSummaryOrder?.total_amount ?? subtotal + DELIVERY_FEE);
   const etaText = getDisplayEtaText(latestActiveOrder);
+  const isInitialLoading = loading && orders.length === 0;
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -187,9 +189,32 @@ const Delivery = () => {
           {/* Main Column (Spans 8 of 12 columns) */}
           <div className="col-span-12 lg:col-span-8 space-y-10">
             
-            {loading && (
+            {isInitialLoading && (
               <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <p className="text-slate-400 text-center">Loading delivery details...</p>
+                <SkeletonGroup className="space-y-8">
+                  <div className="flex justify-between items-start">
+                    <SkeletonGroup>
+                      <Skeleton className="h-8 w-56" />
+                      <Skeleton className="h-4 w-40" />
+                    </SkeletonGroup>
+                    <Skeleton className="h-9 w-32 rounded-full" />
+                  </div>
+                  <Skeleton className="h-40 w-full rounded-3xl" />
+                  <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                      <Skeleton className="h-20 w-20 rounded-full" />
+                      <SkeletonGroup>
+                        <Skeleton className="h-6 w-48" />
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-4 w-44" />
+                      </SkeletonGroup>
+                    </div>
+                    <div className="flex gap-3">
+                      <Skeleton className="h-12 w-24 rounded-2xl" />
+                      <Skeleton className="h-12 w-28 rounded-2xl" />
+                    </div>
+                  </div>
+                </SkeletonGroup>
               </div>
             )}
 
@@ -319,144 +344,224 @@ const Delivery = () => {
 
             {/* Recent Activity */}
             <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="font-black text-2xl text-slate-800">Recent Activity</h3>
-                <button
-                  onClick={() => navigate('/orders')}
-                  className="text-blue-600 font-bold hover:underline text-sm"
-                >
-                  View All
-                </button>
-              </div>
-              <div className="space-y-4">
-                {recentHistory.length === 0 && (
-                  <p className="text-slate-400 text-sm text-center py-8">No order history yet.</p>
-                )}
-                {recentHistory.map((o) => (
-                  <div key={o._id} className="flex items-center justify-between p-5 rounded-2xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
-                        <ClipboardList size={22} className="text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="font-black text-lg text-slate-800">
-                          {STATUS_LABEL[o.status] || o.status}
-                        </p>
-                        <p className="text-slate-400 text-sm font-semibold mt-1">
-                          {fmtDate(o.created_at)} • Qty {o.water_quantity}
-                        </p>
-                      </div>
-                    </div>
-                    <span className="font-black text-xl text-slate-700">{money(o.total_amount)}</span>
+              {isInitialLoading ? (
+                <SkeletonGroup className="space-y-5">
+                  <div className="flex justify-between items-center">
+                    <Skeleton className="h-8 w-56" />
+                    <Skeleton className="h-4 w-16" />
                   </div>
-                ))}
-              </div>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <Skeleton className="h-12 w-12 rounded-2xl" />
+                      <SkeletonGroup>
+                        <Skeleton className="h-6 w-44" />
+                        <Skeleton className="h-4 w-56" />
+                      </SkeletonGroup>
+                    </div>
+                    <Skeleton className="h-7 w-20" />
+                  </div>
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <Skeleton className="h-12 w-12 rounded-2xl" />
+                      <SkeletonGroup>
+                        <Skeleton className="h-6 w-40" />
+                        <Skeleton className="h-4 w-52" />
+                      </SkeletonGroup>
+                    </div>
+                    <Skeleton className="h-7 w-20" />
+                  </div>
+                </SkeletonGroup>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center mb-8">
+                    <h3 className="font-black text-2xl text-slate-800">Recent Activity</h3>
+                    <button
+                      onClick={() => navigate('/orders')}
+                      className="text-blue-600 font-bold hover:underline text-sm"
+                    >
+                      View All
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {recentHistory.length === 0 && (
+                      <p className="text-slate-400 text-sm text-center py-8">No order history yet.</p>
+                    )}
+                    {recentHistory.map((o) => (
+                      <div key={o._id} className="flex items-center justify-between p-5 rounded-2xl border border-slate-100 bg-slate-50 hover:bg-slate-100 transition">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
+                            <ClipboardList size={22} className="text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="font-black text-lg text-slate-800">
+                              {STATUS_LABEL[o.status] || o.status}
+                            </p>
+                            <p className="text-slate-400 text-sm font-semibold mt-1">
+                              {fmtDate(o.created_at)} • Qty {o.water_quantity}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="font-black text-xl text-slate-700">{money(o.total_amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
           {/* Sidebar (Spans 4 of 12 columns) */}
           <div className="col-span-12 lg:col-span-4 space-y-10">
             {/* Reorder Card */}
-            <div className="bg-blue-600 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-200 relative overflow-hidden">
-              <div className="relative z-10">
-                <h3 className="font-black text-3xl mb-3">Running Low?</h3>
-                <p className="text-blue-100 text-base leading-relaxed mb-10 font-medium">
-                  Reorder your usual refill with one tap.
-                </p>
-                <button
-                  onClick={() => navigate('/orders')}
-                  className="w-full bg-slate-900 text-blue-500 py-5 rounded-[1.5rem] font-black text-lg hover:bg-slate-800 transition-all"
-                >
-                  + Order Water
-                </button>
+            {isInitialLoading ? (
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                <SkeletonGroup>
+                  <Skeleton className="h-10 w-48" />
+                  <Skeleton className="h-5 w-full" />
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-14 w-full rounded-[1.5rem]" />
+                </SkeletonGroup>
               </div>
-              <div className="absolute -top-10 -right-10 text-white/10 text-[12rem] rotate-12">💧</div>
-            </div>
+            ) : (
+              <div className="bg-blue-600 rounded-[2.5rem] p-10 text-white shadow-2xl shadow-blue-200 relative overflow-hidden">
+                <div className="relative z-10">
+                  <h3 className="font-black text-3xl mb-3">Running Low?</h3>
+                  <p className="text-blue-100 text-base leading-relaxed mb-10 font-medium">
+                    Reorder your usual refill with one tap.
+                  </p>
+                  <button
+                    onClick={() => navigate('/orders')}
+                    className="w-full bg-slate-900 text-blue-500 py-5 rounded-[1.5rem] font-black text-lg hover:bg-slate-800 transition-all"
+                  >
+                    + Order Water
+                  </button>
+                </div>
+                <div className="absolute -top-10 -right-10 text-white/10 text-[12rem] rotate-12">💧</div>
+              </div>
+            )}
 
             {/* Order Summary */}
             <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-              <h3 className="font-black text-xl text-slate-800 mb-8 uppercase tracking-widest text-center">
-                Order Summary
-              </h3>
-              {!latestSummaryOrder && <p className="text-slate-400 text-sm text-center">No orders yet.</p>}
-              {latestSummaryOrder && (
+              {isInitialLoading ? (
+                <SkeletonGroup>
+                  <Skeleton className="h-6 w-40 mx-auto" />
+                  <div className="flex gap-6 mb-3">
+                    <Skeleton className="h-16 w-16 rounded-2xl" />
+                    <SkeletonGroup className="flex-1">
+                      <Skeleton className="h-6 w-48" />
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-4 w-24" />
+                    </SkeletonGroup>
+                  </div>
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-8 w-28 ml-auto" />
+                  <Skeleton className="h-10 w-full rounded-2xl" />
+                </SkeletonGroup>
+              ) : (
                 <>
-                  <div className="flex gap-6 mb-10">
-                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 shadow-inner shrink-0">
-                      <Droplet fill="currentColor" size={32} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-black text-xl text-slate-800">
-                        {latestSummaryOrder.gallon_type === 'SLIM' ? 'Gallon Slim (Refill)' : '5 Gallon Round (Refill)'}
-                      </p>
-                      <p className="text-slate-400 text-sm font-bold mt-1">
-                        Quantity: {latestSummaryOrder.water_quantity}
-                      </p>
-                      <p className="text-slate-400 text-xs font-bold mt-1">
-                        {STATUS_LABEL[latestSummaryOrder.status] || latestSummaryOrder.status}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-4 text-sm pt-8 border-t border-slate-100">
-                    <div className="flex justify-between text-slate-400 font-bold text-lg">
-                      <span>Subtotal</span>
-                      <span className="text-slate-800">{money(subtotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-400 font-bold text-lg">
-                      <span>Delivery fee</span>
-                      <span className="text-slate-800">{money(DELIVERY_FEE)}</span>
-                    </div>
-                    <div className="flex justify-between font-black text-slate-900 text-3xl pt-2">
-                      <span>Total</span>
-                      <span>{money(total)}</span>
-                    </div>
-                  </div>
-                  <div className="mt-8 p-4 bg-blue-50 rounded-2xl text-blue-600 text-xs font-black text-center border border-blue-100 uppercase tracking-widest">
-                    Payment: {latestSummaryOrder.payment_method}
-                  </div>
+                  <h3 className="font-black text-xl text-slate-800 mb-8 uppercase tracking-widest text-center">
+                    Order Summary
+                  </h3>
+                  {!latestSummaryOrder && <p className="text-slate-400 text-sm text-center">No orders yet.</p>}
+                  {latestSummaryOrder && (
+                    <>
+                      <div className="flex gap-6 mb-10">
+                        <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 shadow-inner shrink-0">
+                          <Droplet fill="currentColor" size={32} />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-black text-xl text-slate-800">
+                            {latestSummaryOrder.gallon_type === 'SLIM' ? 'Gallon Slim (Refill)' : '5 Gallon Round (Refill)'}
+                          </p>
+                          <p className="text-slate-400 text-sm font-bold mt-1">
+                            Quantity: {latestSummaryOrder.water_quantity}
+                          </p>
+                          <p className="text-slate-400 text-xs font-bold mt-1">
+                            {STATUS_LABEL[latestSummaryOrder.status] || latestSummaryOrder.status}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-4 text-sm pt-8 border-t border-slate-100">
+                        <div className="flex justify-between text-slate-400 font-bold text-lg">
+                          <span>Subtotal</span>
+                          <span className="text-slate-800">{money(subtotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-400 font-bold text-lg">
+                          <span>Delivery fee</span>
+                          <span className="text-slate-800">{money(DELIVERY_FEE)}</span>
+                        </div>
+                        <div className="flex justify-between font-black text-slate-900 text-3xl pt-2">
+                          <span>Total</span>
+                          <span>{money(total)}</span>
+                        </div>
+                      </div>
+                      <div className="mt-8 p-4 bg-blue-50 rounded-2xl text-blue-600 text-xs font-black text-center border border-blue-100 uppercase tracking-widest">
+                        Payment: {latestSummaryOrder.payment_method}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
 
             {/* Mini Messages */}
             <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="font-black text-xl text-slate-800">Messages</h3>
-                <MessageSquare size={20} className="text-slate-300" />
-              </div>
-              {riderConversation ? (
-                <>
-                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-6">
-                    <p className="text-sm font-black text-slate-800 uppercase tracking-tight">
-                      {riderConversation.counterpartyLabel || 'Rider'}
-                    </p>
-                    <p className="text-sm text-slate-500 italic mt-2 leading-relaxed font-medium">
-                      "{riderConversation.lastMessage || 'No recent rider messages.'}"
-                    </p>
-                    {riderConversation.lastMessageAt && (
-                      <p className="text-xs text-slate-400 mt-3 flex items-center gap-1">
-                        <Clock size={13} /> {fmtDate(riderConversation.lastMessageAt)}
-                      </p>
-                    )}
+              {isInitialLoading ? (
+                <SkeletonGroup>
+                  <div className="flex justify-between items-center">
+                    <Skeleton className="h-6 w-28" />
+                    <Skeleton className="h-5 w-5 rounded-full" />
                   </div>
-                  <button
-                    onClick={() => navigate('/messages')}
-                    className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all"
-                  >
-                    Open Message Station
-                  </button>
-                </>
+                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-3">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                  <Skeleton className="h-14 w-full rounded-[1.5rem]" />
+                </SkeletonGroup>
               ) : (
-                <div className="text-center py-8">
-                  <MessageSquare size={32} className="mx-auto text-slate-300 mb-3" />
-                  <p className="text-slate-400 text-sm mb-4">No rider messages yet.</p>
-                  <button
-                    onClick={() => navigate('/messages')}
-                    className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all"
-                  >
-                    Open Message Station
-                  </button>
-                </div>
+                <>
+                  <div className="flex justify-between items-center mb-8">
+                    <h3 className="font-black text-xl text-slate-800">Messages</h3>
+                    <MessageSquare size={20} className="text-slate-300" />
+                  </div>
+                  {riderConversation ? (
+                    <>
+                      <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-6">
+                        <p className="text-sm font-black text-slate-800 uppercase tracking-tight">
+                          {riderConversation.counterpartyLabel || 'Rider'}
+                        </p>
+                        <p className="text-sm text-slate-500 italic mt-2 leading-relaxed font-medium">
+                          "{riderConversation.lastMessage || 'No recent rider messages.'}"
+                        </p>
+                        {riderConversation.lastMessageAt && (
+                          <p className="text-xs text-slate-400 mt-3 flex items-center gap-1">
+                            <Clock size={13} /> {fmtDate(riderConversation.lastMessageAt)}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => navigate('/messages')}
+                        className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all"
+                      >
+                        Open Message Station
+                      </button>
+                    </>
+                  ) : (
+                    <div className="text-center py-8">
+                      <MessageSquare size={32} className="mx-auto text-slate-300 mb-3" />
+                      <p className="text-slate-400 text-sm mb-4">No rider messages yet.</p>
+                      <button
+                        onClick={() => navigate('/messages')}
+                        className="w-full py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] hover:bg-slate-800 transition-all"
+                      >
+                        Open Message Station
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

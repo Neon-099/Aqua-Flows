@@ -5,6 +5,9 @@ import { useAuth } from '../contexts/AuthProvider';
 import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen } from '../utils/chatApi';
 import { createChatSocket, emitWithAck } from '../utils/socket';
 import { formatConversationTime, formatMessageTime } from '../utils/messagingFormatters';
+import { Skeleton, SkeletonGroup } from '../components/WireframeSkeleton';
+
+import Header from '../components/Header'
 
 const title = (v) => (v ? `${v[0].toUpperCase()}${v.slice(1)}` : 'User');
 const short = (id) => String(id || '').slice(0, 8);
@@ -240,34 +243,12 @@ export default function Message() {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-white text-slate-700 overflow-hidden">
-      <nav className="flex items-center justify-between px-12 py-4 border-b border-slate-100 shrink-0 w-full" style={{ backgroundColor: '#E9F1F9' }}>
-        <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl">
-          <Droplet fill="currentColor" size={28} />
-          <span>AquaFlow</span>
-        </div>
+      <nav className="flex items-center justify-between px-12 border-b border-slate-100 shrink-0 w-full" style={{ backgroundColor: '#E9F1F9' }}>
+        
         {!isRider && (
-          <div className="hidden md:flex gap-4">
-            <Link to="/home">
-              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
-                <LayoutDashboard size={18} /> Dashboard
-              </button>
-            </Link>
-            <Link to="/orders">
-              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
-                <ClipboardList size={18} /> Orders
-              </button>
-            </Link>
-            <Link to="/messages">
-              <button className="flex items-center gap-2 bg-white text-slate-800 px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all">
-                <MessageSquare size={18} /> Messages
-              </button>
-            </Link>
-            <Link to="/track">
-              <button className="flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all">
-                <MapPin size={18} /> Track Delivery
-              </button>
-            </Link>
-          </div>
+          <Header 
+            name={user.name}
+            image={user.name}/>
         )}
         {isRider && (
           <div className="hidden md:flex gap-4">
@@ -283,19 +264,6 @@ export default function Message() {
             </Link>
           </div>
         )}
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <p className="text-sm font-black text-slate-900 leading-none">{user.name}</p>
-            <p className="text-xs text-slate-400 uppercase font-bold mt-1">{connected ? 'Realtime online' : 'Offline mode'}</p>
-          </div>
-          <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-md overflow-hidden">
-            <img 
-              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name || 'user'}`}
-              className="w-full h-full object-cover"
-              alt={user.name || 'profile'} 
-            />
-          </div>
-        </div>
       </nav>
       <main className="flex flex-1 overflow-hidden w-full">
         <div className="w-[400px] bg-white border-r border-slate-100 flex flex-col shrink-0">
@@ -353,7 +321,36 @@ export default function Message() {
             )}
           </div>
           <div className="overflow-y-auto flex-1 px-4 pb-4">
-            {loadingConversations && <p className="text-sm text-slate-400 px-2">Loading conversations...</p>}
+            {loadingConversations && (
+              <div className="space-y-3 px-2">
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-lg" />
+                      <SkeletonGroup>
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-3 w-20" />
+                      </SkeletonGroup>
+                    </div>
+                    <Skeleton className="h-5 w-5 rounded-full" />
+                  </div>
+                  <Skeleton className="h-3 w-full mt-3" />
+                </div>
+                <div className="rounded-2xl border border-slate-100 p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-lg" />
+                      <SkeletonGroup>
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-24" />
+                      </SkeletonGroup>
+                    </div>
+                    <Skeleton className="h-5 w-5 rounded-full" />
+                  </div>
+                  <Skeleton className="h-3 w-4/5 mt-3" />
+                </div>
+              </div>
+            )}
             {!loadingConversations && filtered.length === 0 && <p className="text-sm text-slate-400 px-2">No conversations</p>}
             {filtered.map((chat) => {
               const active = chat.id === selectedId;
@@ -408,7 +405,15 @@ export default function Message() {
                 <div className="bg-blue-50/50 text-blue-600 p-3 rounded-xl text-xs font-bold border border-blue-100 flex items-center gap-2">
                   <Info size={16} /> Messages are linked to {selected.orderId}.
                 </div>
-                {loadingMessages && <p className="text-sm text-slate-400">Loading messages...</p>}
+                {loadingMessages && (
+                  <div className="space-y-3">
+                    <Skeleton className="h-14 w-2/3 rounded-2xl" />
+                    <div className="flex justify-end">
+                      <Skeleton className="h-14 w-1/2 rounded-2xl" />
+                    </div>
+                    <Skeleton className="h-14 w-3/5 rounded-2xl" />
+                  </div>
+                )}
                 {!loadingMessages && messages.length === 0 && <p className="text-sm text-slate-400">No messages yet.</p>}
                 {messages.map((m) => (
                   <div key={m.id} className={`flex flex-col gap-1 ${m.mine ? 'items-end' : 'items-start'}`}>
