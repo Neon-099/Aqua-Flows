@@ -31,7 +31,7 @@ const RiderOrders = () => {
         const res = await apiRequest('/orders');
         const mappedOrders = (res?.data || []).map((order) => ({
           id: order._id,
-          orderId: formatOrderId(String(order._id).slice(-4)),
+          orderId: order.order_code || formatOrderId(String(order._id).slice(-4)),
           customerName: order.customer_name || (order.customer_id ? `Customer ${String(order.customer_id).slice(-4)}` : 'Customer'),
           address: order.customer_address || 'Address unavailable',
           gallons: order.water_quantity,

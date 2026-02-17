@@ -3,6 +3,22 @@ import { Droplet, Mail, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, LocationEd
 import { Link, useNavigate } from 'react-router-dom';
 import {useAuth } from '../contexts/AuthProvider'
 
+const ADDRESS_OPTIONS = [
+  { value: 'Amanoaoac', label: 'Amanoaoac' },
+  { value: 'Aserda', label: 'Aserda' },
+  { value: 'Apaya', label: 'Apaya ' },
+  { value: 'Baloling', label: 'Baloling ' },
+  { value: 'Coral', label: 'Coral' },
+  { value: 'Golden', label: 'Golden' },
+  { value: 'Luyan', label: 'Luyan' },
+  { value: 'Nilombot', label: 'Nilombot ' },
+  { value: 'Pias', label: 'Pias ' },
+  { value: 'Poblacion', label: 'Poblacion' },
+  { value: 'Primicias', label: 'Primicias' },
+  { value: 'Santa Maria', label: 'Santa Maria' },
+  { value: 'Torres', label: 'Torres' }
+];
+
 const Auth = () => {
 
   const { login, register, forgotPassword, resetPassword } = useAuth();
@@ -379,12 +395,12 @@ const Auth = () => {
                     className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium bg-white"
                     required={activeTab === 'signup'}
                   >
-                    <option value="">Select delivery area</option>
-                    <option value="Downtown">Downtown</option>
-                    <option value="Uptown">Uptown</option>
-                    <option value="Riverside">Riverside</option>
-                    <option value="West End">West End</option>
-                    <option value="Campus">Campus</option>
+                    <option value="">Select your barangay/address option</option>
+                    {ADDRESS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

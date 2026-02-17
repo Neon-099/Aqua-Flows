@@ -8,6 +8,7 @@ import { formatConversationTime, formatMessageTime } from '../utils/messagingFor
 
 const title = (v) => (v ? `${v[0].toUpperCase()}${v.slice(1)}` : 'User');
 const short = (id) => String(id || '').slice(0, 8);
+const FINISHED_ORDER_STATUSES = new Set(['COMPLETED', 'CANCELLED']);
 
 const mapConversation = (row, myId) => {
   const participants = Array.isArray(row?.participants) ? row.participants : [];
@@ -43,6 +44,29 @@ const mapMessage = (row, myId) => ({
   timestamp: row.timestamp,
   mine: row.senderId === myId,
 });
+
+const pickPreferredConversationId = ({ mapped, prevId, userRole }) => {
+  if (!Array.isArray(mapped) || mapped.length === 0) return null;
+
+  if (!prevId) return mapped[0]?.id || null;
+
+  const prev = prevId ? mapped.find((c) => c.id === prevId) : null;
+  const isCustomerView = userRole !== 'rider';
+  const staffConversation = mapped.find((c) => c.otherRole === 'staff' && !c.archivedAt);
+
+  if (prev) {
+    const shouldRerouteToStaff =
+      isCustomerView &&
+      prev.otherRole === 'rider' &&
+      FINISHED_ORDER_STATUSES.has(String(prev.status || '').toUpperCase());
+
+    if (!shouldRerouteToStaff) return prev.id;
+    if (staffConversation) return staffConversation.id;
+  }
+
+  if (isCustomerView && staffConversation) return staffConversation.id;
+  return mapped[0]?.id || null;
+};
 
 export default function Message() {
   const { user } = useAuth();
@@ -98,8 +122,11 @@ export default function Message() {
         const mapped = rows.map((r) => mapConversation(r, user._id));
         setConversations(mapped);
         setSelectedId((prev) => {
-          if (prev && mapped.some((c) => c.id === prev)) return prev;
-          return mapped[0]?.id || null;
+          return pickPreferredConversationId({
+            mapped,
+            prevId: prev,
+            userRole: user?.role,
+          });
         });
       } catch (e) {
         setError(e.message || 'Failed to load conversations');
@@ -110,7 +137,7 @@ export default function Message() {
     loadConversations(true);
     const interval = setInterval(() => {
       loadConversations(false);
-    }, 1000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [user?._id, showArchived]);
 

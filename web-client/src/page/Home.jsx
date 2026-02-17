@@ -57,17 +57,14 @@ const sortByRecent = (arr) =>
 
 const getDisplayEtaText = (order) => {
   if (!order) return 'No active ETA';
+  if (order.eta_text) return order.eta_text;
+
+  if (order.status === 'PENDING_PAYMENT') return 'Delivered';
   if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
-    const min = Number(order.eta_minutes_min);
-    const max = Number(order.eta_minutes_max);
-    if (Number.isFinite(min) && Number.isFinite(max)) {
-      const low = Math.min(min, max);
-      const high = Math.max(min, max);
-      const picked = Math.floor(Math.random() * (high - low + 1)) + low;
-      return `${picked} mins`;
-    }
+    return 'ETA will appear once rider picks up';
   }
-  return order.eta_text || 'ETA will appear once rider picks up';
+
+  return 'No active ETA';
 };
 
 const getCounterparty = (conversation, myUserId) => {
@@ -153,7 +150,8 @@ const Home = () => {
   const orderQty = Number(latestSummaryOrder?.water_quantity || 0);
   const subtotal = orderQty * PRICE_PER_GALLON;
   const total = Number(latestSummaryOrder?.total_amount ?? subtotal + DELIVERY_FEE);
-  const etaText = getDisplayEtaText(latestActiveOrder);
+  
+  const etaText =  getDisplayEtaText(latestActiveOrder);
 
   return (
     <div className="h-screen w-full bg-slate-50 font-sans text-slate-700 overflow-hidden flex flex-col">

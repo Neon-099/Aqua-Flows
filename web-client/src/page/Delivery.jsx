@@ -43,30 +43,34 @@ const sortByRecent = (arr) =>
 
 const getDisplayEtaText = (order) => {
   if (!order) return 'No active ETA';
+  if (order.status === 'PENDING_PAYMENT' || order.status === 'COMPLETED') return 'No active ETA';
+  if (order.eta_text) return order.eta_text;
   if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
-    const min = Number(order.eta_minutes_min);
-    const max = Number(order.eta_minutes_max);
-    if (Number.isFinite(min) && Number.isFinite(max)) {
-      const low = Math.min(min, max);
-      const high = Math.max(min, max);
-      const picked = Math.floor(Math.random() * (high - low + 1)) + low;
-      return `${picked} mins`;
-    }
+    return 'ETA will appear once rider picks up';
   }
-  return order.eta_text || 'ETA will appear once rider picks up';
+  return 'No active ETA';
 };
 
 const getProgressSteps = (status) => {
   const steps = [
-    { label: "Confirmed", icon: CheckCircle2, status: 'CONFIRMED' },
-    { label: "Gallon Pickup", icon: Package, status: 'PICKED_UP' },
-    { label: "Refilling in Progress", icon: RefreshCw, status: 'PICKED_UP' },
-    { label: "Delivery in Progress", icon: Truck, status: 'OUT_FOR_DELIVERY' },
-    { label: "Delivered", icon: Home, status: 'DELIVERED' },
+    { label: "Confirmed", icon: CheckCircle2 },
+    { label: "Gallon Pickup", icon: Package },
+    { label: "Refilling in Progress", icon: RefreshCw },
+    { label: "Delivery in Progress", icon: Truck },
+    { label: "Delivered", icon: Home },
+    { label: "Pending Payment", icon: Clock },
+    { label: "Completed", icon: CheckCircle2 },
   ];
 
-  const statusOrder = ['CONFIRMED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED'];
-  const currentIndex = statusOrder.indexOf(status) >= 0 ? statusOrder.indexOf(status) : 0;
+  const currentIndex = (() => {
+    if (status === 'CONFIRMED') return 0;
+    if (status === 'PICKED_UP') return 2;
+    if (status === 'OUT_FOR_DELIVERY') return 3;
+    if (status === 'DELIVERED') return 4;
+    if (status === 'PENDING_PAYMENT') return 5;
+    if (status === 'COMPLETED') return 6;
+    return 0;
+  })();
 
   return steps.map((step, index) => ({
     ...step,
@@ -200,7 +204,9 @@ const Delivery = () => {
               <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <div className="flex justify-between items-start mb-12">
                   <div>
-                    <h3 className="font-black text-2xl text-slate-800">Order #{String(latestActiveOrder._id).slice(-8).toUpperCase()}</h3>
+                    <h3 className="font-black text-2xl text-slate-800">
+                      Order #{latestActiveOrder.order_code || String(latestActiveOrder._id).slice(-8).toUpperCase()}
+                    </h3>
                     <p className="text-slate-400 font-medium mt-1">
                       {fmtDate(latestActiveOrder.created_at)}
                     </p>

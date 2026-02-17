@@ -26,18 +26,14 @@ const getOrderStatusLabel = (status) => {
 };
 
 const getDisplayEtaText = (order) => {
-  if (!order) return 'ETA unavailable';
+  if (!order) return null;
+  //TO RETURN AND NOT DISPLAY ETA
+  if (order.status === 'PENDING_PAYMENT') return null;
+  if (order.eta_text) return order.eta_text;
   if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
-    const min = Number(order.eta_minutes_min);
-    const max = Number(order.eta_minutes_max);
-    if (Number.isFinite(min) && Number.isFinite(max)) {
-      const low = Math.min(min, max);
-      const high = Math.max(min, max);
-      const picked = Math.floor(Math.random() * (high - low + 1)) + low;
-      return `${picked} mins`;
-    }
+    return 'ETA will appear once rider picks up';
   }
-  return order.eta_text || getOrderStatusLabel(order.status);
+  return null;
 };
 
 const Order = () => {
@@ -70,6 +66,7 @@ const Order = () => {
           const status = getOrderStatusLabel(order.status);
           return {
             id: order._id,
+            orderCode: order.order_code || order._id,
             date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
             items: order.gallon_type === 'SLIM' ? `${order.water_quantity} Gallon Slim (Refill)` : `5 Gallon Round (Refill)`,
             qty: order.water_quantity,
@@ -96,7 +93,7 @@ const Order = () => {
     };
   }, [user?.address, user?.name]);
 
-  console.log('Order: ', orders);
+  console.log('Ordering: ', orders);
 
   const changeQuantity = (delta) => {
     setQuantity((q) => {
@@ -143,6 +140,7 @@ const Order = () => {
           getOrderStatusLabel(created.status);
         const newOrder = {
           id: created._id,
+          orderCode: created.order_code || created._id,
           date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
           items: gallonLabel,
           qty: created.water_quantity,
@@ -285,7 +283,7 @@ const Order = () => {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em]">
-                          {order.id} • {order.date}
+                          {order.orderCode} • {order.date}
                         </p>
                         <p className="font-black text-slate-900 mt-1">{order.items}</p>
                         <p className="text-sm text-slate-500 mt-1">
@@ -301,9 +299,11 @@ const Order = () => {
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm text-slate-600">
-                      <span className="inline-flex items-center gap-2">
-                        <Clock size={16} /> {order.eta}
-                      </span>
+                      {order.eta ? (
+                        <span className="inline-flex items-center gap-2">
+                          <Clock size={16} /> {order.eta}
+                        </span>
+                      ) : <span />}
                       <span className="font-black text-slate-900">₱{order.total.toFixed(2)}</span>
                     </div>
                   </div>
