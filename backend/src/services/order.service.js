@@ -17,9 +17,20 @@ import {
   USER_ROLE,
 } from '../constants/order.constants.js';
 import { assertTransition } from './order.transition.js';
-import { createPaymentIntent } from './paymongo.service.js';
+import { createPaymentIntent, getPaymentIntent } from './paymongo.service.js';
 import { computeEtaFromAddress } from '../utils/eta.js';
+import { env } from '../config/env.js';
 
+const PRICE_PER_GALLON = 15;
+const DELIVERY_FEE = 5;
+const GCASH_VAT_FEE = 3;
+
+const isPayMongoIntentPaid = (status) => {
+  const normalized = String(status || '').toLowerCase();
+  return normalized === 'succeeded' || normalized === 'paid';
+};
+
+const isMockPayMongoSuccess = () => env.PAYMONGO_MOCK_SUCCESS === 'true';
 
 const throwError = (status, message) => {
   const err = new Error(message);
@@ -96,10 +107,40 @@ const enrichOrdersWithProfiles = async (orders) => {
 };
 
 export const createOrder = async ({ user, payload }) => {
-  const { customer_id, water_quantity, total_amount, payment_method, gallon_type } = payload;
+  const {
+    customer_id,
+    water_quantity,
+    total_amount,
+    payment_method,
+    gallon_type,
+    gcash_payment_intent_id,
+  } = payload;
 
   if (!water_quantity || !total_amount || !payment_method || !gallon_type) {
     throwError(400, 'Missing required fields');
+  }
+
+  const quantity = Number(water_quantity);
+  const normalizedPaymentMethod = String(payment_method).toUpperCase();
+  const submittedTotal = Number(total_amount);
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throwError(400, 'Invalid water_quantity');
+  }
+
+  if (!Object.values(PAYMENT_METHOD).includes(normalizedPaymentMethod)) {
+    throwError(400, 'Invalid payment_method');
+  }
+
+  if (!Number.isFinite(submittedTotal) || submittedTotal <= 0) {
+    throwError(400, 'Invalid total_amount');
+  }
+
+  const subtotal = quantity * PRICE_PER_GALLON;
+  const vatFee = normalizedPaymentMethod === PAYMENT_METHOD.GCASH ? GCASH_VAT_FEE : 0;
+  const expectedTotal = Number((subtotal + DELIVERY_FEE + vatFee).toFixed(2));
+  if (Math.abs(submittedTotal - expectedTotal) > 0.001) {
+    throwError(400, `Invalid total_amount. Expected ${expectedTotal.toFixed(2)}`);
   }
 
   let resolvedCustomerId = customer_id;
@@ -121,6 +162,29 @@ export const createOrder = async ({ user, payload }) => {
     throwError(403, 'Only customers can place orders');
   }
 
+  let paidIntent = null;
+  if (normalizedPaymentMethod === PAYMENT_METHOD.GCASH) {
+    if (!gcash_payment_intent_id) {
+      throwError(400, 'gcash_payment_intent_id is required for GCASH orders');
+    }
+    if (isMockPayMongoSuccess() && gcash_payment_intent_id.startsWith('mock_pi_')) {
+      paidIntent = {
+        id: gcash_payment_intent_id,
+        status: 'succeeded',
+        amount: Math.round(expectedTotal * 100),
+        currency: 'PHP',
+      };
+    } else {
+      paidIntent = await getPaymentIntent({ paymentIntentId: gcash_payment_intent_id });
+      if (!isPayMongoIntentPaid(paidIntent.status)) {
+        throwError(400, 'GCASH transaction is not paid yet');
+      }
+      if (Number(paidIntent.amount) !== Math.round(expectedTotal * 100)) {
+        throwError(400, 'GCASH amount does not match order total');
+      }
+    }
+  }
+
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
@@ -129,42 +193,40 @@ export const createOrder = async ({ user, payload }) => {
     const order = await Order.create([{
       order_code: orderCode,
       customer_id: resolvedCustomerId,
-      water_quantity,
+      water_quantity: quantity,
       gallon_type,
-      total_amount,
-      payment_method,
+      total_amount: expectedTotal,
+      payment_method: normalizedPaymentMethod,
       status: ORDER_STATUS.PENDING,
-      payment_status: ORDER_PAYMENT_STATUS.UNPAID,
+      payment_status: normalizedPaymentMethod === PAYMENT_METHOD.GCASH
+        ? ORDER_PAYMENT_STATUS.PAID
+        : ORDER_PAYMENT_STATUS.UNPAID,
     }], { session });
 
     await addHistory(session, order[0]._id, ORDER_STATUS.PENDING, user._id);
 
     let payment = null;
-    if (payment_method === PAYMENT_METHOD.GCASH) {
-      const intent = await createPaymentIntent({
-        amount: total_amount,
-        currency: 'PHP',
-        description: `Order ${order[0].order_code || order[0]._id}`,
-      });
-
+    if (normalizedPaymentMethod === PAYMENT_METHOD.GCASH) {
       payment = await Payment.create([{
         order_id: order[0]._id,
         method: PAYMENT_METHOD.GCASH,
-        status: PAYMENT_STATUS.PENDING,
-        amount: total_amount,
+        status: PAYMENT_STATUS.PAID,
+        amount: expectedTotal,
         currency: 'PHP',
-        paymongo_payment_intent_id: intent.id,
+        paymongo_payment_intent_id: paidIntent.id,
+        paid_at: new Date(),
       }], { session });
-
-      order[0].payment_status = ORDER_PAYMENT_STATUS.PENDING;
-      await order[0].save({ session });
     }
 
     await session.commitTransaction();
 
     return {
       order: order[0],
-      payment: payment ? payment[0] : null,
+      payment: payment
+        ? {
+          ...payment[0].toObject(),
+        }
+        : null,
     };
   } catch (err) {
     await session.abortTransaction();
@@ -172,6 +234,61 @@ export const createOrder = async ({ user, payload }) => {
   } finally {
     session.endSession();
   }
+};
+
+export const createGcashPreparation = async ({ user, payload }) => {
+  const { water_quantity, total_amount, payment_method, gallon_type } = payload;
+
+  if (!water_quantity || !total_amount || !payment_method || !gallon_type) {
+    throwError(400, 'Missing required fields');
+  }
+
+  const quantity = Number(water_quantity);
+  const normalizedPaymentMethod = String(payment_method).toUpperCase();
+  const submittedTotal = Number(total_amount);
+  if (normalizedPaymentMethod !== PAYMENT_METHOD.GCASH) {
+    throwError(400, 'Payment method must be GCASH');
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throwError(400, 'Invalid water_quantity');
+  }
+  if (!Number.isFinite(submittedTotal) || submittedTotal <= 0) {
+    throwError(400, 'Invalid total_amount');
+  }
+
+  if (user.role !== USER_ROLE.CUSTOMER && user.role !== USER_ROLE.USER) {
+    throwError(403, 'Only customers can prepare GCASH payments');
+  }
+
+  const subtotal = quantity * PRICE_PER_GALLON;
+  const expectedTotal = Number((subtotal + DELIVERY_FEE + GCASH_VAT_FEE).toFixed(2));
+  if (Math.abs(submittedTotal - expectedTotal) > 0.001) {
+    throwError(400, `Invalid total_amount. Expected ${expectedTotal.toFixed(2)}`);
+  }
+
+  if (isMockPayMongoSuccess()) {
+    return {
+      payment_intent_id: `mock_pi_${Date.now()}`,
+      checkout_url: `${env.CLIENT_URL || 'http://localhost:5173'}/orders?gcash_mock=paid`,
+      amount: expectedTotal,
+      currency: 'PHP',
+      status: 'succeeded',
+    };
+  }
+
+  const intent = await createPaymentIntent({
+    amount: expectedTotal,
+    currency: 'PHP',
+    description: `AquaFlow prepaid checkout`,
+  });
+
+  return {
+    payment_intent_id: intent.id,
+    checkout_url: intent.checkout_url,
+    amount: expectedTotal,
+    currency: 'PHP',
+    status: intent.status,
+  };
 };
 
 export const getOrderById = async ({ user, orderId }) => {
@@ -659,6 +776,14 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
       order.status = ORDER_STATUS.PENDING_PAYMENT;
       await order.save({ session });
       await addHistory(session, order._id, ORDER_STATUS.PENDING_PAYMENT, user._id);
+    } else if (
+      order.payment_method === PAYMENT_METHOD.GCASH &&
+      order.payment_status === ORDER_PAYMENT_STATUS.PAID
+    ) {
+      assertTransition(order.status, ORDER_STATUS.COMPLETED);
+      order.status = ORDER_STATUS.COMPLETED;
+      await order.save({ session });
+      await addHistory(session, order._id, ORDER_STATUS.COMPLETED, user._id);
     }
 
     await session.commitTransaction();

@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   createOrder,
+  createGcashPreparation,
   getOrderById,
   listOrdersForRider,
   cancelOrder,
@@ -21,6 +22,7 @@ import { protect, authorize } from '../middlewares/auth.middleware.js';
 const router = express.Router();
 
 router.post('/', protect, createOrder);
+router.post('/gcash_prepare', protect, authorize('customer'), createGcashPreparation);
 router.get('/', protect, listOrdersForRider);
 router.get('/:id', protect, getOrderById);
 

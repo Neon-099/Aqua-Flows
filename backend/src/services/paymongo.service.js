@@ -48,6 +48,45 @@ export const createPaymentIntent = async ({ amount, currency = 'PHP', descriptio
     status: payload.data.attributes.status,
     amount: payload.data.attributes.amount,
     currency: payload.data.attributes.currency,
+    checkout_url:
+      payload?.data?.attributes?.next_action?.redirect?.url ||
+      payload?.data?.attributes?.next_action?.redirect?.checkout_url ||
+      null,
+  };
+};
+
+export const getPaymentIntent = async ({ paymentIntentId }) => {
+  if (!paymentIntentId) {
+    const err = new Error('paymentIntentId is required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const res = await fetch(`${PAYMONGO_BASE_URL}/payment_intents/${paymentIntentId}`, {
+    method: 'GET',
+    headers: {
+      Authorization: getAuthHeader(),
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const payload = await res.json();
+  if (!res.ok) {
+    const err = new Error(payload?.errors?.[0]?.detail || 'PayMongo error');
+    err.statusCode = 502;
+    throw err;
+  }
+
+  const attrs = payload?.data?.attributes || {};
+  return {
+    id: payload?.data?.id || paymentIntentId,
+    status: attrs.status || null,
+    amount: attrs.amount || null,
+    currency: attrs.currency || null,
+    checkout_url:
+      attrs?.next_action?.redirect?.url ||
+      attrs?.next_action?.redirect?.checkout_url ||
+      null,
   };
 };
 

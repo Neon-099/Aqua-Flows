@@ -16,6 +16,18 @@ export const createOrder = async (req, res, next) => {
   }
 };
 
+export const createGcashPreparation = async (req, res, next) => {
+  try {
+    const result = await orderService.createGcashPreparation({
+      user: req.user,
+      payload: req.body,
+    });
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const emitOrderUpdate = (req, order, extra = {}) => {
   const io = req.app.get('io');
   if (!io || !order?._id) return;
