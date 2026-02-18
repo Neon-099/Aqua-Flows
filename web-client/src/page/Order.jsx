@@ -1,23 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Droplet,
-  LayoutDashboard,
-  ClipboardList,
-  MessageSquare,
   MapPin,
   Clock,
-  Wallet,
-  CreditCard,
-  Info,
   Truck,
-  CalendarRange,
-  X,
 } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import { useAuth } from '../contexts/AuthProvider';
 import Header from '../components/Header'
 import { Skeleton } from '../components/WireframeSkeleton';
+import OrderFormModal from '../components/OrderFormModal';
 
 const getOrderStatusLabel = (status) => {
   if (status === 'DELIVERED' || status === 'COMPLETED') return 'Delivered';
@@ -37,25 +29,35 @@ const getDisplayEtaText = (order) => {
   return null;
 };
 
+const PRICE_PER_GALLON = 15;
+const DELIVERY_FEE = 5;
+const GCASH_VAT_FEE = 3;
+const GCASH_PENDING_KEY = 'gcashPendingIntent';
+
 const Order = () => {
+  const ORDERS_PER_PAGE = 4;
   const { user } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [quantity, setQuantity] = useState(2);
   const [paymentMethod, setPaymentMethod] = useState('cod');
+  const [paymentChannel, setPaymentChannel] = useState('gcash');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const [schedule, setSchedule] = useState('round-gallon');
   const [orders, setOrders] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [ordersError, setOrdersError] = useState('');
+  const autoFinalizeTriedRef = useRef(false);
 
   const gallonType = schedule === 'slim-gallon' ? 'SLIM' : 'ROUND';
   const gallonLabel =
     gallonType === 'SLIM' ? `Gallon Slim (Refill)` : `Gallon Round (Refill)`;
 
-  const subtotal = quantity * 15; // sample pricing in pesos
-  const deliveryFee = 5;
-  const total = subtotal + deliveryFee;
+  const subtotal = quantity * PRICE_PER_GALLON;
+  const deliveryFee = DELIVERY_FEE;
+  const vatFee = paymentMethod === 'gcash' ? GCASH_VAT_FEE : 0;
+  const total = subtotal + deliveryFee + vatFee;
 
   useEffect(() => {
     let mounted = true;
@@ -107,32 +109,105 @@ const Order = () => {
     });
   };
 
-  const runGcashPayment = () =>
-    new Promise((resolve, reject) => {
-      setTimeout(() => {
-        // mock success rate; wire to real gateway later
-        Math.random() < 0.95 ? resolve(true) : reject(new Error('GCash payment failed.'));
-      }, 1400);
+  const finalizePaidGcashOrder = async (pending) => {
+    const pendingQty = Number(pending?.quantity || 0);
+    const pendingGallonType = pending?.gallon_type;
+    const pendingTotal = Number(pending?.total_amount || 0);
+    if (!pending?.payment_intent_id || !pendingQty || !pendingGallonType || !pendingTotal) {
+      throw new Error('Missing pending GCash checkout details');
+    }
+
+    const pendingSubtotal = pendingQty * PRICE_PER_GALLON;
+    const res = await apiRequest('/orders', 'POST', {
+      water_quantity: pendingQty,
+      subtotal_amount: pendingSubtotal,
+      delivery_fee: DELIVERY_FEE,
+      vat_fee: GCASH_VAT_FEE,
+      total_amount: pendingTotal,
+      payment_method: 'GCASH',
+      gallon_type: pendingGallonType,
+      gcash_payment_intent_id: pending.payment_intent_id,
     });
+
+    localStorage.removeItem(GCASH_PENDING_KEY);
+    const created = res?.data?.order || res?.data;
+    if (!created) return;
+
+    const createdAt = created.created_at ? new Date(created.created_at) : new Date();
+    const status = getOrderStatusLabel(created.status);
+    const itemLabel =
+      pendingGallonType === 'SLIM' ? 'Gallon Slim (Refill)' : 'Gallon Round (Refill)';
+    const newOrder = {
+      id: created._id,
+      orderCode: created.order_code || created._id,
+      date: createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      items: itemLabel,
+      qty: created.water_quantity,
+      total: created.total_amount,
+      status,
+      eta: getDisplayEtaText(created),
+      address: user?.address || 'Address unavailable',
+    };
+    setOrders((prev) => [newOrder, ...prev]);
+    setCurrentPage(1);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setPaymentError('');
-
-    if (paymentMethod === 'gcash') {
-      try {
-        setIsProcessingPayment(true);
-        await runGcashPayment();
-      } catch (error) {
-        setPaymentError(error?.message || 'GCash payment failed.');
-        setIsProcessingPayment(false);
-        return;
-      }
-    }
+    setIsProcessingPayment(true);
 
     try {
+      if (paymentMethod === 'gcash') {
+        const pendingRaw = localStorage.getItem(GCASH_PENDING_KEY);
+        const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
+        const canFinalize =
+          pending &&
+          pending.payment_intent_id &&
+          pending.quantity === quantity &&
+          pending.gallon_type === gallonType &&
+          Number(pending.total_amount) === Number(total);
+
+        if (!canFinalize) {
+          const prepRes = await apiRequest('/orders/gcash_prepare', 'POST', {
+            water_quantity: quantity,
+            total_amount: total,
+            payment_method: 'GCASH',
+            gallon_type: gallonType,
+            payment_channel: paymentChannel,
+          });
+
+          const paymentIntentId = prepRes?.data?.payment_intent_id;
+          const checkoutUrl = prepRes?.data?.checkout_url;
+          if (!paymentIntentId || !checkoutUrl) {
+            setPaymentError('Unable to start GCash checkout. Please try again.');
+            return;
+          }
+
+          localStorage.setItem(
+            GCASH_PENDING_KEY,
+            JSON.stringify({
+              payment_intent_id: paymentIntentId,
+              quantity,
+              gallon_type: gallonType,
+              total_amount: total,
+              payment_channel: paymentChannel,
+            })
+          );
+          window.location.assign(checkoutUrl);
+          return;
+        }
+
+        await finalizePaidGcashOrder(pending);
+        setIsModalOpen(false);
+        return;
+      }
+
       const res = await apiRequest('/orders', 'POST', {
         water_quantity: quantity,
+        subtotal_amount: subtotal,
+        delivery_fee: deliveryFee,
+        vat_fee: vatFee,
         total_amount: total,
         payment_method: paymentMethod.toUpperCase(),
         gallon_type: gallonType,
@@ -155,12 +230,14 @@ const Order = () => {
           address: user?.address || 'Address unavailable',
         };
         setOrders((prev) => [newOrder, ...prev]);
+        setCurrentPage(1);
       }
 
       setIsProcessingPayment(false);
       setIsModalOpen(false);
     } catch (err) {
       setPaymentError(err?.message || 'Failed to create order');
+    } finally {
       setIsProcessingPayment(false);
     }
   };
@@ -176,6 +253,58 @@ const Order = () => {
   };
 
   const isInitialLoading = ordersLoading && orders.length === 0;
+  const totalPages = Math.max(1, Math.ceil(orders.length / ORDERS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
+  const paginatedOrders = orders.slice(startIndex, startIndex + ORDERS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  useEffect(() => {
+    if (autoFinalizeTriedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const gcashStatus = params.get('gcash');
+    if (!gcashStatus) return;
+
+    const clearGcashQueryParam = () => {
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete('gcash');
+      const nextSearch = cleaned.searchParams.toString();
+      const nextUrl = `${cleaned.pathname}${nextSearch ? `?${nextSearch}` : ''}${cleaned.hash}`;
+      window.history.replaceState({}, '', nextUrl);
+    };
+
+    autoFinalizeTriedRef.current = true;
+
+    if (gcashStatus === 'cancelled') {
+      setPaymentError('Payment was cancelled. You can retry checkout.');
+      clearGcashQueryParam();
+      return;
+    }
+    if (gcashStatus !== 'success') {
+      clearGcashQueryParam();
+      return;
+    }
+
+    const pendingRaw = localStorage.getItem(GCASH_PENDING_KEY);
+    const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
+    if (!pending?.payment_intent_id) {
+      setPaymentError('Missing pending checkout data. Please start checkout again.');
+      clearGcashQueryParam();
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    finalizePaidGcashOrder(pending)
+      .catch((err) => {
+        setPaymentError(err?.message || 'Failed to finalize GCash order');
+      })
+      .finally(() => {
+        setIsProcessingPayment(false);
+        clearGcashQueryParam();
+      });
+  }, [user?.address]);
 
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">
@@ -349,7 +478,7 @@ const Order = () => {
                         {ordersError}
                       </div>
                     )}
-                    {orders.map((order) => (
+                    {paginatedOrders.map((order) => (
                       <div
                         key={order.id}
                         className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 flex flex-col gap-3"
@@ -382,6 +511,32 @@ const Order = () => {
                         </div>
                       </div>
                     ))}
+                    {!orders.length && (
+                      <p className="text-sm text-slate-400">No recent orders yet.</p>
+                    )}
+                    {orders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                          disabled={currentPage === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {currentPage} of {totalPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                          disabled={currentPage === totalPages}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -390,194 +545,26 @@ const Order = () => {
         </div>
       </main>
 
-      {/* Floating Modal - Order Form */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm px-4">
-          <div className="bg-white rounded-[2.2rem] shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-100">
-            {/* Modal header */}
-            <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-slate-50/60">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                  New order
-                </p>
-                <h2 className="text-2xl font-black text-slate-900">
-                  Schedule your water refill
-                </h2>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-100"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal content */}
-            <form onSubmit={handleSubmit} className="grid md:grid-cols-[1.4fr,1fr] gap-0">
-              {/* Left: form fields */}
-              <div className="p-8 space-y-7 border-r border-slate-100">
-
-                {/* Quantity & schedule */}
-                <section className="grid md:grid-cols-2 gap-5">
-                  {/* Quantity */}
-                  <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 flex flex-col justify-between">
-                    <div className="mb-4">
-                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">
-                        Quantity
-                      </p>
-                      <p className="font-black text-lg text-slate-900">How many gallons?</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <button
-                        type="button"
-                        onClick={() => changeQuantity(-1)}
-                        className="w-11 h-11 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-2xl font-black text-slate-500 hover:bg-slate-100"
-                      >
-                        −
-                      </button>
-                      <div className="flex-1 text-center">
-                        <p className="text-3xl font-black text-slate-900 leading-none">{quantity}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">
-                          Gallons
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => changeQuantity(1)}
-                        className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-2xl font-black hover:bg-blue-700"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* GALLON TYPE */}
-                  <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center text-blue-500 shadow-inner">
-                        <CalendarRange size={18} />
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                          Gallon Type
-                        </p>
-                        <p className="font-black text-lg text-slate-900">What type of gallon?</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { id: 'round-gallon', label: 'Round Gallon' },
-                        { id: 'slim-gallon', label: 'Slim Gallon'},
-                      ].map((slot) => (
-                        <button
-                          key={slot.id}
-                          type="button"
-                          onClick={() => setSchedule(slot.id)}
-                          className={`rounded-xl px-3 py-2 text-left border text-[11px] font-bold leading-tight ${
-                            schedule === slot.id
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          <span className="block uppercase tracking-[0.18em] text-[10px]">
-                            {slot.label}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </section>
-              </div>
-                        
-              {/* Right: summary + payment */}
-              <aside className="p-8 space-y-6 bg-slate-50/60">
-                {/* PAYMENT METHOD */}
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <CreditCard size={18} className="text-blue-500" />
-                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                      Payment method
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { id: 'cod', label: 'Cash on Delivery', icon: Wallet },
-                      { id: 'gcash', label: 'GCash', icon: CreditCard },
-                    ].map(({ id, label, icon: Icon }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setPaymentMethod(id)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-bold ${
-                          paymentMethod === id
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center">
-                          <Icon size={18} className="text-blue-500" />
-                        </div>
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[11px] text-slate-400 font-semibold flex items-start gap-2">
-                    <Info size={14} className="mt-[2px] text-slate-300" />
-                    {paymentMethod === 'gcash'
-                      ? 'GCash payments must be completed before we create your order.'
-                      : 'Your rider will confirm the amount and payment upon delivery.'}
-                  </p>
-                  {paymentError && (
-                    <p className="text-[11px] font-semibold text-rose-600">{paymentError}</p>
-                  )}
-                </div>
-                
-                {/* ORDER SUMMARY */}
-                <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                  <h3 className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.22em] mb-4 text-center">
-                    Order Summary
-                  </h3>
-                  <div className="flex gap-4 mb-4">
-                    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 shadow-inner shrink-0">
-                      <Droplet fill="currentColor" size={26} />
-                    </div>
-                    <div>
-                      <p className="font-black text-base text-slate-900">
-                        {gallonLabel}
-                      </p>
-                      <p className="text-[12px] text-slate-400 font-semibold mt-1">
-                        Qty {quantity} •{' '}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 text-sm pt-3 border-t border-slate-100">
-                    <div className="flex justify-between text-slate-500 font-semibold">
-                      <span>Subtotal</span>
-                      <span className="text-slate-800">₱{subtotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-500 font-semibold">
-                      <span>Delivery fee</span>
-                      <span className="text-slate-800">₱{deliveryFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-black text-slate-900 text-xl pt-3">
-                      <span>Total</span>
-                      <span>₱{total.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  disabled={isProcessingPayment}
-                  className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm uppercase tracking-[0.22em] hover:bg-slate-800 transition-all disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isProcessingPayment ? 'Processing GCash…' : 'Confirm Order'}
-                </button>
-              </aside>
-            </form>
-          </div>
-        </div>
-      )}
+      <OrderFormModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSubmit={handleSubmit}
+        quantity={quantity}
+        onChangeQuantity={changeQuantity}
+        schedule={schedule}
+        onScheduleChange={setSchedule}
+        paymentMethod={paymentMethod}
+        onPaymentMethodChange={setPaymentMethod}
+        paymentChannel={paymentChannel}
+        onPaymentChannelChange={setPaymentChannel}
+        paymentError={paymentError}
+        isProcessingPayment={isProcessingPayment}
+        gallonLabel={gallonLabel}
+        subtotal={subtotal}
+        deliveryFee={deliveryFee}
+        vatFee={vatFee}
+        total={total}
+      />
     </div>
   );
 };

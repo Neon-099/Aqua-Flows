@@ -43,13 +43,13 @@ const sortByRecent = (arr) =>
   [...arr].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
 
 const getDisplayEtaText = (order) => {
-  if (!order) return 'No active ETA';
+  if (!order) return 'Wait for confirmation';
   if (order.status === 'PENDING_PAYMENT' || order.status === 'COMPLETED') return 'No active ETA';
   if (order.eta_text) return order.eta_text;
   if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
     return 'ETA will appear once rider picks up';
   }
-  return 'No active ETA';
+  return 'Wait for confirmation';
 };
 
 const getProgressSteps = (status) => {
@@ -309,12 +309,6 @@ const Delivery = () => {
                     </div>
                     <div className="flex gap-3">
                       <button 
-                        onClick={() => window.location.href = `tel:+1234567890`}
-                        className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-blue-200 rounded-2xl text-blue-600 font-bold hover:bg-blue-50 transition-all shadow-sm"
-                      >
-                        <Phone size={18} /> Call
-                      </button>
-                      <button 
                         onClick={() => navigate('/messages')}
                         className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl text-white font-bold hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg shadow-blue-200"
                       >
@@ -442,6 +436,7 @@ const Delivery = () => {
 
             {/* Order Summary */}
             <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+              
               {isInitialLoading ? (
                 <SkeletonGroup>
                   <Skeleton className="h-6 w-40 mx-auto" />

@@ -351,7 +351,7 @@ const Home = () => {
             </div>
             <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
               <p className="text-sm font-black text-slate-800 uppercase tracking-tight">
-                {riderMeta.name} ({riderMeta.role})
+                { latestActiveOrder?.assigned_rider_name || 'No Assigned'} ({riderMeta.role})
               </p>
               <p className="text-sm text-slate-500 italic mt-2 leading-relaxed font-medium">
                 "{riderConversation?.lastMessage || 'No recent rider messages.'}"
