@@ -40,6 +40,7 @@ export const env = {
   BREVO_SENDER_NAME: process.env.BREVO_SENDER_NAME,
   PAYMONGO_SECRET_KEY: process.env.PAYMONGO_SECRET_KEY,
   PAYMONGO_WEBHOOK_SECRET: process.env.PAYMONGO_WEBHOOK_SECRET,
+  PAYMONGO_MOCK_SUCCESS: process.env.PAYMONGO_MOCK_SUCCESS,
   NODE_ENV: process.env.NODE_ENV || 'development',
   CLIENT_URL: process.env.CLIENT_URL,
   CLIENT_URLS: process.env.CLIENT_URLS,

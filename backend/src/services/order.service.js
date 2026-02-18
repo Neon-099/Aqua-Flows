@@ -17,7 +17,11 @@ import {
   USER_ROLE,
 } from '../constants/order.constants.js';
 import { assertTransition } from './order.transition.js';
-import { createPaymentIntent, getPaymentIntent } from './paymongo.service.js';
+import {
+  createCheckoutSession,
+  getCheckoutSession,
+  getPaymentIntent,
+} from './paymongo.service.js';
 import { computeEtaFromAddress } from '../utils/eta.js';
 import { env } from '../config/env.js';
 
@@ -27,7 +31,7 @@ const GCASH_VAT_FEE = 3;
 
 const isPayMongoIntentPaid = (status) => {
   const normalized = String(status || '').toLowerCase();
-  return normalized === 'succeeded' || normalized === 'paid';
+  return normalized === 'succeeded' || normalized === 'paid' || normalized === 'completed';
 };
 
 const isMockPayMongoSuccess = () => env.PAYMONGO_MOCK_SUCCESS === 'true';
@@ -174,6 +178,20 @@ export const createOrder = async ({ user, payload }) => {
         amount: Math.round(expectedTotal * 100),
         currency: 'PHP',
       };
+    } else if (gcash_payment_intent_id.startsWith('cs_')) {
+      const sessionInfo = await getCheckoutSession({ checkoutSessionId: gcash_payment_intent_id });
+      if (!isPayMongoIntentPaid(sessionInfo.status)) {
+        throwError(400, 'GCASH checkout session is not paid yet');
+      }
+      if (Number(sessionInfo.amount) !== Math.round(expectedTotal * 100)) {
+        throwError(400, 'GCASH amount does not match order total');
+      }
+      paidIntent = {
+        id: sessionInfo.payment_intent_id || gcash_payment_intent_id,
+        status: sessionInfo.status,
+        amount: sessionInfo.amount,
+        currency: sessionInfo.currency || 'PHP',
+      };
     } else {
       paidIntent = await getPaymentIntent({ paymentIntentId: gcash_payment_intent_id });
       if (!isPayMongoIntentPaid(paidIntent.status)) {
@@ -237,7 +255,7 @@ export const createOrder = async ({ user, payload }) => {
 };
 
 export const createGcashPreparation = async ({ user, payload }) => {
-  const { water_quantity, total_amount, payment_method, gallon_type } = payload;
+  const { water_quantity, total_amount, payment_method, gallon_type, payment_channel } = payload;
 
   if (!water_quantity || !total_amount || !payment_method || !gallon_type) {
     throwError(400, 'Missing required fields');
@@ -266,6 +284,11 @@ export const createGcashPreparation = async ({ user, payload }) => {
     throwError(400, `Invalid total_amount. Expected ${expectedTotal.toFixed(2)}`);
   }
 
+  const normalizedChannel = String(payment_channel || 'gcash').toLowerCase();
+  if (!['gcash', 'qrph'].includes(normalizedChannel)) {
+    throwError(400, 'Invalid payment_channel');
+  }
+
   if (isMockPayMongoSuccess()) {
     return {
       payment_intent_id: `mock_pi_${Date.now()}`,
@@ -276,18 +299,26 @@ export const createGcashPreparation = async ({ user, payload }) => {
     };
   }
 
-  const intent = await createPaymentIntent({
+  const successBase = env.CLIENT_URL || 'http://localhost:5173';
+  const cancelBase = env.CLIENT_URL || 'http://localhost:5173';
+  const checkoutSession = await createCheckoutSession({
     amount: expectedTotal,
     currency: 'PHP',
-    description: `AquaFlow prepaid checkout`,
+    description: 'AquaFlow prepaid checkout',
+    successUrl: `${successBase}/orders?gcash=success`,
+    cancelUrl: `${cancelBase}/orders?gcash=cancelled`,
+    paymentMethodType: normalizedChannel,
   });
 
   return {
-    payment_intent_id: intent.id,
-    checkout_url: intent.checkout_url,
+    // Keep legacy key so existing web/mobile clients continue to work.
+    // For checkout flow this may carry a checkout session id (cs_...).
+    payment_intent_id: checkoutSession.id,
+    checkout_url: checkoutSession.checkout_url,
     amount: expectedTotal,
     currency: 'PHP',
-    status: intent.status,
+    status: checkoutSession.status,
+    payment_channel: normalizedChannel,
   };
 };
 
