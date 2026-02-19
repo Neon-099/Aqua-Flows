@@ -26,7 +26,7 @@ router.post('/gcash_prepare', protect, authorize('customer'), createGcashPrepara
 router.get('/', protect, listOrdersForRider);
 router.get('/:id', protect, getOrderById);
 
-router.put('/:id/cancel', protect, authorize('customer', 'user'), cancelOrder);
+router.put('/:id/cancel', protect, authorize('customer', 'user', 'staff', 'admin'), cancelOrder);
 router.put('/:id/confirm', protect, authorize('staff', 'rider'), confirmOrder);
 router.put('/:id/assign_rider', protect, authorize('staff'), assignRider);
 router.put('/:id/auto_assign', protect, authorize('staff'), autoAssignRider);

@@ -397,8 +397,13 @@ export const cancelOrder = async ({ user, orderId }) => {
   const order = await Order.findById(orderId);
   if (!order) throwError(404, 'Order not found');
 
-  if (user.role !== USER_ROLE.CUSTOMER && user.role !== USER_ROLE.USER) {
-    throwError(403, 'Only customers can cancel orders');
+  const canCancel =
+    user.role === USER_ROLE.CUSTOMER ||
+    user.role === USER_ROLE.STAFF ||
+    user.role === USER_ROLE.ADMIN ||
+    user.role === 'user';
+  if (!canCancel) {
+    throwError(403, 'Only customers, staff, and admins can cancel orders');
   }
 
   if (order.status !== ORDER_STATUS.PENDING) {
