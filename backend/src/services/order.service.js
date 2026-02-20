@@ -57,6 +57,64 @@ const resolveRiderId = async (user) => {
   return rider._id;
 };
 
+const ensureAnyActiveRiderHasCapacity = async (session, gallons) => {
+  const neededGallons = Number(gallons || 0);
+  const exists = await Rider.exists({
+    status: 'active',
+    $expr: {
+      $gte: [
+        { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
+        neededGallons,
+      ],
+    },
+  }).session(session);
+
+  if (!exists) {
+    throwError(409, 'NO_AVAILABLE_RIDER_CAPACITY');
+  }
+};
+
+const reserveRiderCapacity = async (session, riderId, gallons) => {
+  const neededGallons = Number(gallons || 0);
+  const updated = await Rider.findOneAndUpdate(
+    {
+      _id: riderId,
+      status: 'active',
+      $expr: {
+        $gte: [
+          { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
+          neededGallons,
+        ],
+      },
+    },
+    {
+      $inc: {
+        currentLoadGallons: neededGallons,
+        activeOrdersCount: 1,
+      },
+    },
+    { new: true, session }
+  );
+
+  if (!updated) {
+    throwError(409, 'NO_AVAILABLE_RIDER_CAPACITY');
+  }
+  return updated;
+};
+
+const releaseRiderCapacity = async (session, riderId, gallons) => {
+  if (!riderId) return;
+  const releasedGallons = Number(gallons || 0);
+  if (releasedGallons <= 0) return;
+
+  const rider = await Rider.findById(riderId).session(session);
+  if (!rider) return;
+
+  rider.currentLoadGallons = Math.max(0, Number(rider.currentLoadGallons || 0) - releasedGallons);
+  rider.activeOrdersCount = Math.max(0, Number(rider.activeOrdersCount || 0) - 1);
+  await rider.save({ session });
+};
+
 const isTransientTxnError = (err) =>
   err?.errorLabels?.includes('TransientTransactionError') ||
   /write conflict/i.test(err?.message || '');
@@ -415,6 +473,10 @@ export const cancelOrder = async ({ user, orderId }) => {
     session.startTransaction();
 
     assertTransition(order.status, ORDER_STATUS.CANCELLED);
+    if (order.assigned_rider_id) {
+      await releaseRiderCapacity(session, order.assigned_rider_id, order.water_quantity);
+      order.assigned_rider_id = null;
+    }
     order.status = ORDER_STATUS.CANCELLED;
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.CANCELLED, user._id);
@@ -438,8 +500,10 @@ export const confirmOrder = async ({ user, orderId }) => {
 
       const order = await Order.findById(orderId).session(session);
       if (!order) throwError(404, 'Order not found');
+      const gallons = Number(order.water_quantity || 0);
 
       if (user.role === USER_ROLE.STAFF) {
+        await ensureAnyActiveRiderHasCapacity(session, gallons);
         assertTransition(order.status, ORDER_STATUS.CONFIRMED);
         order.status = ORDER_STATUS.CONFIRMED;
         await order.save({ session });
@@ -451,6 +515,9 @@ export const confirmOrder = async ({ user, orderId }) => {
         if (!resolvedRiderId) throwError(400, 'Missing rider id');
         if (order.assigned_rider_id && order.assigned_rider_id !== resolvedRiderId) {
           throwError(409, 'Order already assigned to another rider');
+        }
+        if (!order.assigned_rider_id) {
+          await reserveRiderCapacity(session, resolvedRiderId, gallons);
         }
         order.status = ORDER_STATUS.CONFIRMED;
         order.assigned_rider_id = resolvedRiderId;
@@ -479,6 +546,65 @@ export const confirmOrder = async ({ user, orderId }) => {
       session.endSession();
     }
   }
+};
+
+export const autoAcceptPendingOrders = async ({ maxAgeSeconds = 60, batchSize = 100 } = {}) => {
+  const cutoff = new Date(Date.now() - Number(maxAgeSeconds || 60) * 1000);
+  const candidates = await Order.find({
+    status: ORDER_STATUS.PENDING,
+    created_at: { $lte: cutoff },
+  })
+    .sort({ created_at: 1 })
+    .limit(Number(batchSize || 100))
+    .select('_id');
+
+  let updated = 0;
+  let skippedNoCapacity = 0;
+  let skippedChanged = 0;
+  let failed = 0;
+
+  for (const row of candidates) {
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+
+      const order = await Order.findById(row._id).session(session);
+      if (!order || order.status !== ORDER_STATUS.PENDING) {
+        skippedChanged += 1;
+        await session.abortTransaction();
+        continue;
+      }
+
+      await ensureAnyActiveRiderHasCapacity(session, order.water_quantity);
+      assertTransition(order.status, ORDER_STATUS.CONFIRMED);
+      order.status = ORDER_STATUS.CONFIRMED;
+      order.auto_accepted = true;
+      await order.save({ session });
+      await addHistory(session, order._id, ORDER_STATUS.CONFIRMED, 'SYSTEM_AUTO_ACCEPT');
+
+      await session.commitTransaction();
+      updated += 1;
+    } catch (err) {
+      await session.abortTransaction();
+      if (err?.message === 'NO_AVAILABLE_RIDER_CAPACITY') {
+        skippedNoCapacity += 1;
+        continue;
+      }
+      failed += 1;
+      console.error(`[AUTO_ACCEPT] Failed for order ${row._id}: ${err.message}`);
+    } finally {
+      session.endSession();
+    }
+  }
+
+  return {
+    scanned: candidates.length,
+    updated,
+    skippedNoCapacity,
+    skippedChanged,
+    failed,
+    cutoff: cutoff.toISOString(),
+  };
 };
 
 export const riderPickup = async ({ user, orderId }) => {
@@ -530,6 +656,16 @@ export const assignRider = async ({ user, orderId, riderId }) => {
   const session = await mongoose.startSession();
   try {
     session.startTransaction();
+
+    const gallons = Number(order.water_quantity || 0);
+    const previousRiderId = order.assigned_rider_id || null;
+
+    if (previousRiderId && previousRiderId !== riderId) {
+      await releaseRiderCapacity(session, previousRiderId, gallons);
+    }
+    if (!previousRiderId || previousRiderId !== riderId) {
+      await reserveRiderCapacity(session, riderId, gallons);
+    }
 
     order.assigned_rider_id = riderId;
     await order.save({ session });
@@ -802,6 +938,7 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
   try {
     session.startTransaction();
 
+    await releaseRiderCapacity(session, resolvedRiderId, order.water_quantity);
     assertTransition(order.status, ORDER_STATUS.DELIVERED);
     order.status = ORDER_STATUS.DELIVERED;
     await order.save({ session });
@@ -850,6 +987,7 @@ export const riderCancelPickup = async ({ user, orderId }) => {
   try {
     session.startTransaction();
 
+    await releaseRiderCapacity(session, resolvedRiderId, order.water_quantity);
     assertTransition(order.status, ORDER_STATUS.PENDING);
     order.status = ORDER_STATUS.PENDING;
     order.assigned_rider_id = null;
