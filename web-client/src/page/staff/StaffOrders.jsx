@@ -1,5 +1,4 @@
 // page/staff/StaffOrders.jsx
-import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Droplet,
@@ -7,429 +6,76 @@ import {
   MessageSquare,
   Bell,
 } from 'lucide-react';
-import OrderCard from '../../components/OrderCard';
+import OrderCard from '../../components/staff/OrderCard';
 import AssignRiderPanel from '../../components/AssignRiderPanel';
-import { OrderStatus, RiderStatus } from '../../constants/staff.constants';
-import { apiRequest } from '../../utils/api';
-import { formatOrderId, getInitials } from '../../utils/staffFormatters';
 import { useAuth } from '../../contexts/AuthProvider';
+import CancelOrder from '../../components/CancelOrder';
+import useStaffOrders from './useStaffOrders';
 
 
 const StaffOrders = () => {
   const { user } = useAuth()
   const location = useLocation()
-
-  const [orders, setOrders] = useState([]);
-  const [riders, setRiders] = useState([]);
-  const [selectedPendingIds, setSelectedPendingIds] = useState(new Set());
-  const [selectedAssignIds, setSelectedAssignIds] = useState(new Set());
-  const [showAssignPanel, setShowAssignPanel] = useState(false);
-  const [assignError, setAssignError] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [dispatchMinutesById, setDispatchMinutesById] = useState({});
-  const [now, setNow] = useState(Date.now());
-  const dispatchingRef = useRef(new Set());
-
-  // Auto-decrement timer for pending orders
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setOrders((prevOrders) =>
-        prevOrders.map((order) => {
-          if (order.timeRemaining && order.timeRemaining > 0) {
-            return { ...order, timeRemaining: order.timeRemaining - 1 };
-          }
-          return order;
-        })
-      );
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const loadData = async () => {
-      try {
-        setIsLoading(true);
-        setLoadError('');
-
-        const [ordersRes, ridersRes] = await Promise.all([
-          apiRequest('/staff/orders'),
-          apiRequest('/riders'),
-        ]);
-
-        const mappedOrders = (ordersRes?.data || []).map((order) => ({
-          id: order._id,
-          orderId: order.order_code || formatOrderId(String(order._id).slice(-4)),
-          customerName: order.customer_name || (order.customer_id ? `Customer ${String(order.customer_id).slice(-4)}` : 'Customer'),
-          address: order.customer_address || 'Address unavailable',
-          gallons: order.water_quantity,
-          gallonType: order.gallon_type,
-          paymentMethod: order.payment_method,
-          status: order.status,
-          assignedRiderId: order.assigned_rider_id || null,
-          assignedRider: order.assigned_rider_name || null,
-          autoAccepted: Boolean(order.auto_accepted),
-          dispatchQueuedAt: order.dispatch_queued_at || null,
-          dispatchAfterMinutes: order.dispatch_after_minutes || null,
-          dispatchScheduledFor: order.dispatch_scheduled_for || null,
-          dispatchedAt: order.dispatched_at || null,
-          timeRemaining: null,
-          createdAt: order.created_at,
-        }));
-
-        const mappedRiders = (ridersRes?.data || []).map((rider) => {
-          const name = rider?.user?.name || `Rider ${String(rider._id).slice(-4)}`;
-          return {
-            id: rider._id,
-            name,
-            initials: getInitials(name),
-            status: rider.status === 'active' ? RiderStatus.AVAILABLE : RiderStatus.OFFLINE,
-            avatarColor: rider.status === 'active' ? 'bg-blue-500' : 'bg-gray-400',
-            currentOrders: rider.activeOrdersCount || 0,
-          };
-        });
-
-        if (!isMounted) return;
-        setOrders(mappedOrders);
-        setRiders(mappedRiders);
-      } catch (err) {
-        if (!isMounted) return;
-        setLoadError(err?.message || 'Failed to load orders');
-      } finally {
-        if (!isMounted) return;
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-    const interval = setInterval(loadData, 10000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  const handleAcceptOrder = async (orderId) => {
-    let snapshot = null;
-    try {
-      setOrders((prev) => {
-        snapshot = prev;
-        return prev.map((order) =>
-          order.id === orderId
-            ? { ...order, status: OrderStatus.CONFIRMED, timeRemaining: null }
-            : order
-        );
-      });
-      const res = await apiRequest(`/orders/${orderId}/confirm`, 'PUT');
-      const updated = res?.data;
-      if (updated) {
-        setOrders((prevOrders) =>
-          prevOrders.map((order) =>
-            order.id === orderId
-              ? {
-                  ...order,
-                  status: updated.status,
-                  timeRemaining: null,
-                  autoAccepted: Boolean(updated.auto_accepted),
-                }
-              : order
-          )
-        );
-      }
-      setSelectedPendingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(orderId);
-        return next;
-      });
-    } catch (err) {
-      if (snapshot) setOrders(snapshot);
-      setAssignError(err?.message || 'Failed to accept order');
-    }
-  };
-
-  const handleCloseAssignPanel = () => {
-    setShowAssignPanel(false);
-  };
-
-  const handleAssignRider = async (riderId) => {
-    const rider = riders.find((r) => r.id === riderId);
-    const selectedIds = Array.from(selectedAssignIds);
-
-    if (rider && selectedIds.length > 0) {
-      let snapshot = null;
-      try {
-        setOrders((prev) => {
-          snapshot = prev;
-          return prev.map((o) =>
-            selectedAssignIds.has(o.id)
-              ? { ...o, assignedRiderId: rider.id, assignedRider: rider.name }
-              : o
-          );
-        });
-        const results = await Promise.all(
-          selectedIds.map((orderId) =>
-            apiRequest(`/orders/${orderId}/assign_rider`, 'PUT', { rider_id: riderId })
-              .then((res) => ({ ok: true, orderId, data: res?.data }))
-              .catch((error) => ({ ok: false, orderId, error }))
-          )
-        );
-
-        setOrders((prevOrders) =>
-          prevOrders.map((o) => {
-            const match = results.find((r) => r.ok && r.orderId === o.id);
-            if (!match) return o;
-            return {
-              ...o,
-              status: match.data?.status || o.status,
-              timeRemaining: null,
-              assignedRider: rider.name,
-              assignedRiderId: rider.id,
-            };
-          })
-        );
-
-        const failed = results.find((r) => !r.ok);
-        setAssignError(failed ? (failed.error?.message || 'Failed to assign some orders') : '');
-        setSelectedAssignIds(new Set());
-        handleCloseAssignPanel();
-      } catch (err) {
-        if (snapshot) setOrders(snapshot);
-        setAssignError(err?.message || 'Failed to assign rider');
-      }
-    }
-  };
-
-  const pendingOrders = orders.filter((o) => o.status === OrderStatus.PENDING);
-  const confirmedOrders = orders.filter((o) => o.status === OrderStatus.CONFIRMED);
-  const assignableOrders = confirmedOrders.filter((o) => !o.assignedRiderId);
-  const assignedOrders = confirmedOrders.filter((o) => o.assignedRiderId);
-  const pickedUpOrders = orders.filter((o) => o.status === OrderStatus.PICKED_UP);
-  const outForDeliveryOrders = orders.filter((o) => o.status === OrderStatus.OUT_FOR_DELIVERY);
-  const deliveredOrders = orders.filter((o) => o.status === OrderStatus.DELIVERED);
-  const pendingPaymentOrders = orders.filter((o) => o.status === OrderStatus.PENDING_PAYMENT);
-  const completedOrders = orders.filter((o) => o.status === OrderStatus.COMPLETED);
-  const cancelledOrders = orders.filter((o) => o.status === OrderStatus.CANCELLED);
-  const pendingOrdersCount = pendingOrders.length;
-  const selectedAssignGallons = orders.reduce(
-    (total, order) => (selectedAssignIds.has(order.id) ? total + order.gallons : total),
-    0
-  );
-  const getGallonsForSet = (idSet) =>
-    orders.reduce((total, order) => (idSet.has(order.id) ? total + order.gallons : total), 0);
-
-  const togglePendingSelect = (orderId) => {
-    setSelectedPendingIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(orderId)) {
-        next.delete(orderId);
-      } else {
-        next.add(orderId);
-      }
-      return next;
-    });
-  };
-
-  const toggleAssignSelect = (orderId) => {
-    const order = orders.find((o) => o.id === orderId);
-    if (!order || order.assignedRiderId) return;
-
-    setSelectedAssignIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(orderId)) {
-        next.delete(orderId);
-        setAssignError('');
-        return next;
-      }
-
-      const nextTotalGallons = getGallonsForSet(next) + order.gallons;
-      if (nextTotalGallons > 30) {
-        setAssignError('Selection exceeds 30 gallons. Adjust your selection.');
-        return next;
-      }
-
-      setAssignError('');
-      next.add(orderId);
-      return next;
-    });
-  };
-
-  const handleSelectAllPending = () => {
-    setSelectedPendingIds(new Set(pendingOrders.map((o) => o.id)));
-  };
-
-  const handleClearPendingSelection = () => {
-    setSelectedPendingIds(new Set());
-  };
-
-  const handleSelectAllAssign = () => {
-    let total = 0;
-    const next = new Set();
-    assignableOrders.forEach((order) => {
-      if (total + order.gallons <= 30) {
-        total += order.gallons;
-        next.add(order.id);
-      }
-    });
-    setSelectedAssignIds(next);
-    setAssignError(total === 0 ? 'No eligible orders within 30 gallons.' : '');
-  };
-
-  const handleClearAssignSelection = () => {
-    setSelectedAssignIds(new Set());
-    setAssignError('');
-  };
-
-  const handleAcceptSelected = async () => {
-    if (selectedPendingIds.size === 0) return;
-    const ids = Array.from(selectedPendingIds);
-    let snapshot = null;
-    try {
-      setOrders((prev) => {
-        snapshot = prev;
-        return prev.map((order) =>
-          selectedPendingIds.has(order.id)
-            ? { ...order, status: OrderStatus.CONFIRMED, timeRemaining: null }
-            : order
-        );
-      });
-      await Promise.all(
-        ids.map((orderId) => apiRequest(`/orders/${orderId}/confirm`, 'PUT'))
-      );
-      setSelectedPendingIds(new Set());
-    } catch (err) {
-      if (snapshot) setOrders(snapshot);
-      setAssignError(err?.message || 'Failed to accept selected orders');
-    }
-  };
-
-  const handleOpenAssignPanel = (orderId) => {
-    if (!orderId) return;
-    const order = orders.find((o) => o.id === orderId);
-    if (!order || order.status !== OrderStatus.CONFIRMED || order.assignedRiderId) return;
-
-    if (order.gallons > 30) {
-      setAssignError('Order exceeds 30 gallons and cannot be assigned in bulk.');
-      return;
-    }
-
-    setSelectedAssignIds(new Set([orderId]));
-    setAssignError('');
-    setShowAssignPanel(true);
-  };
-
-  const handleAssignSelected = () => {
-    if (selectedAssignIds.size === 0) {
-      setAssignError('Select at least one order to assign.');
-      return;
-    }
-    setShowAssignPanel(true);
-  };
-
-  const getDispatchRemaining = (order) => {
-    if (!order.dispatchScheduledFor) return null;
-    const target = new Date(order.dispatchScheduledFor).getTime();
-    const diff = Math.max(0, Math.ceil((target - now) / 1000));
-    return diff;
-  };
-
-  const handleQueueDispatch = async (orderId) => {
-    const minutes = Number(dispatchMinutesById[orderId] || 0);
-    if (!minutes || minutes <= 0) {
-      setAssignError('Enter dispatch minutes greater than 0.');
-      return;
-    }
-    let snapshot = null;
-    try {
-      const nowTime = new Date();
-      const scheduledFor = new Date(nowTime.getTime() + minutes * 60 * 1000);
-      setOrders((prev) => {
-        snapshot = prev;
-        return prev.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                dispatchQueuedAt: nowTime.toISOString(),
-                dispatchAfterMinutes: minutes,
-                dispatchScheduledFor: scheduledFor.toISOString(),
-              }
-            : o
-        );
-      });
-      const res = await apiRequest(`/orders/${orderId}/queue_dispatch`, 'PUT', { minutes });
-      const updated = res?.data;
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                dispatchQueuedAt: updated?.dispatch_queued_at || o.dispatchQueuedAt,
-                dispatchAfterMinutes: updated?.dispatch_after_minutes || o.dispatchAfterMinutes,
-                dispatchScheduledFor: updated?.dispatch_scheduled_for || o.dispatchScheduledFor,
-              }
-            : o
-        )
-      );
-      setAssignError('');
-    } catch (err) {
-      if (snapshot) setOrders(snapshot);
-      setAssignError(err?.message || 'Failed to queue dispatch');
-    }
-  };
-
-  const handleDispatchNow = async (orderId) => {
-    let snapshot = null;
-    try {
-      setOrders((prev) => {
-        snapshot = prev;
-        return prev.map((o) =>
-          o.id === orderId
-            ? { ...o, status: OrderStatus.OUT_FOR_DELIVERY, dispatchedAt: new Date().toISOString() }
-            : o
-        );
-      });
-      const res = await apiRequest(`/orders/${orderId}/dispatch`, 'PUT');
-      const updated = res?.data;
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                status: updated?.status || o.status,
-                dispatchedAt: updated?.dispatched_at || o.dispatchedAt,
-              }
-            : o
-        )
-      );
-      setAssignError('');
-    } catch (err) {
-      if (snapshot) setOrders(snapshot);
-      setAssignError(err?.message || 'Failed to dispatch order');
-    }
-  };
-
-  useEffect(() => {
-    const dueOrders = orders.filter(
-      (o) =>
-        o.status === OrderStatus.PICKED_UP &&
-        o.dispatchScheduledFor &&
-        getDispatchRemaining(o) === 0
-    );
-
-    dueOrders.forEach((order) => {
-      if (dispatchingRef.current.has(order.id)) return;
-      dispatchingRef.current.add(order.id);
-      handleDispatchNow(order.id).finally(() => {
-        dispatchingRef.current.delete(order.id);
-      });
-    });
-  }, [orders, now]);
+  const {
+    ORDERS_PER_PAGE,
+    autoAssignWeights,
+    orders,
+    riders,
+    selectedPendingIds,
+    selectedAssignIds,
+    showAssignPanel,
+    assignError,
+    isLoading,
+    loadError,
+    dispatchMinutesById,
+    setDispatchMinutesById,
+    bulkDispatchMinutes,
+    setBulkDispatchMinutes,
+    cancelOrderId,
+    cancelTargetOrder,
+    ordersError,
+    previewLoading,
+    previewError,
+    previewEnabled,
+    recommended,
+    pageByStatus,
+    pendingOrders,
+    assignableOrders,
+    assignedOrders,
+    pickedUpOrders,
+    outForDeliveryOrders,
+    deliveredOrders,
+    pendingPaymentOrders,
+    completedOrders,
+    cancelledOrders,
+    pendingOrdersCount,
+    selectedAssignGallons,
+    getTotalPages,
+    getPageSlice,
+    setPageFor,
+    getNextDispatchCountdown,
+    handleAcceptOrder,
+    handleCancelOrder,
+    confirmCancelOrder,
+    closeCancelModal,
+    handleCloseAssignPanel,
+    handleAssignRider,
+    handlePreviewRecommended,
+    handleAssignRecommended,
+    togglePendingSelect,
+    toggleAssignSelect,
+    handleSelectAllPending,
+    handleClearPendingSelection,
+    handleSelectAllAssign,
+    handleClearAssignSelection,
+    handleAcceptSelected,
+    handleOpenAssignPanel,
+    handleAssignSelected,
+    handleQueueDispatch,
+    handleQueueDispatchBulk,
+    handleDispatchNowBulk,
+    handleDispatchNow,
+  } = useStaffOrders();
 
   const navButtonClass = (isActive) =>
     isActive
@@ -546,7 +192,7 @@ const StaffOrders = () => {
                       onClick={handleSelectAllAssign}
                       className="px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
                     >
-                      Select Up To 30 Gallons
+                      Select Up To 43 Gallons
                     </button>
                     <button
                       onClick={handleClearAssignSelection}
@@ -571,7 +217,7 @@ const StaffOrders = () => {
                       Pending
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {pendingOrders.map((order) => (
+                      {getPageSlice(pendingOrders, pageByStatus.pending).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -581,10 +227,35 @@ const StaffOrders = () => {
                           selectionLabel="Select to accept"
                           onToggleSelect={togglePendingSelect}
                           onAccept={handleAcceptOrder}
+                          onCancel={handleCancelOrder}
+                          cancellingOrderId={cancelOrderId}
                           onAssignRider={handleOpenAssignPanel}
                         />
                       ))}
                     </div>
+                    {pendingOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('pending', Math.max(1, pageByStatus.pending - 1))}
+                          disabled={pageByStatus.pending === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.pending} of {getTotalPages(pendingOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('pending', Math.min(getTotalPages(pendingOrders), pageByStatus.pending + 1))}
+                          disabled={pageByStatus.pending === getTotalPages(pendingOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -594,7 +265,7 @@ const StaffOrders = () => {
                       Confirmed (Unassigned)
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {assignableOrders.map((order) => (
+                      {getPageSlice(assignableOrders, pageByStatus.assignable).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -607,7 +278,31 @@ const StaffOrders = () => {
                           onAssignRider={handleOpenAssignPanel}
                         />
                       ))}
+                      
                     </div>
+                    {assignableOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('assignable', Math.max(1, pageByStatus.assignable - 1))}
+                          disabled={pageByStatus.assignable === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.assignable} of {getTotalPages(assignableOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('assignable', Math.min(getTotalPages(assignableOrders), pageByStatus.assignable + 1))}
+                          disabled={pageByStatus.assignable === getTotalPages(assignableOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -617,7 +312,7 @@ const StaffOrders = () => {
                       Assigned
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {assignedOrders.map((order) => (
+                      {getPageSlice(assignedOrders, pageByStatus.assigned).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -627,10 +322,34 @@ const StaffOrders = () => {
                           selectionLabel=""
                           onToggleSelect={() => {}}
                           onAccept={handleAcceptOrder}
+                          onCancel={handleCancelOrder}
                           onAssignRider={handleOpenAssignPanel}
                         />
                       ))}
                     </div>
+                    {assignedOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('assigned', Math.max(1, pageByStatus.assigned - 1))}
+                          disabled={pageByStatus.assigned === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.assigned} of {getTotalPages(assignedOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('assigned', Math.min(getTotalPages(assignedOrders), pageByStatus.assigned + 1))}
+                          disabled={pageByStatus.assigned === getTotalPages(assignedOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -639,8 +358,41 @@ const StaffOrders = () => {
                     <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
                       Picked Up
                     </h3>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">Dispatch Queue (Bulk)</h4>
+                    <p className="text-xs text-slate-500">Apply to all picked up orders.</p>
+                    {getNextDispatchCountdown() !== null && (
+                      <p className="text-xs text-slate-600 mt-1">
+                        Next dispatch in {getNextDispatchCountdown()}s
+                      </p>
+                    )}
+                  </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          value={bulkDispatchMinutes}
+                          onChange={(e) => setBulkDispatchMinutes(e.target.value)}
+                          placeholder="Minutes"
+                          className="w-24 px-2 py-1.5 rounded-lg border border-slate-200 text-xs"
+                        />
+                        <button
+                          onClick={handleQueueDispatchBulk}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                          Queue All
+                        </button>
+                        <button
+                          onClick={handleDispatchNowBulk}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900"
+                        >
+                          Dispatch All Now
+                        </button>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {pickedUpOrders.map((order) => (
+                      {getPageSlice(pickedUpOrders, pageByStatus.pickedUp).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -651,53 +403,32 @@ const StaffOrders = () => {
                           onToggleSelect={() => {}}
                           onAccept={handleAcceptOrder}
                           onAssignRider={handleOpenAssignPanel}
-                          footer={(
-                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
-                              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
-                                <span>Dispatch Queue</span>
-                                {order.dispatchScheduledFor && (
-                                  <span>
-                                    {getDispatchRemaining(order)}s remaining
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={dispatchMinutesById[order.id] ?? ''}
-                                  onChange={(e) =>
-                                    setDispatchMinutesById((prev) => ({
-                                      ...prev,
-                                      [order.id]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Minutes"
-                                  className="w-20 px-2 py-1 rounded-lg border border-slate-200 text-xs"
-                                />
-                                <button
-                                  onClick={() => handleQueueDispatch(order.id)}
-                                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
-                                >
-                                  Queue
-                                </button>
-                                <button
-                                  onClick={() => handleDispatchNow(order.id)}
-                                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900"
-                                >
-                                  Dispatch Now
-                                </button>
-                              </div>
-                              {order.dispatchScheduledFor && (
-                                <p className="text-[11px] text-slate-500">
-                                  Scheduled for {new Date(order.dispatchScheduledFor).toLocaleTimeString()}
-                                </p>
-                              )}
-                            </div>
-                          )}
                         />
                       ))}
                     </div>
+                    {pickedUpOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('pickedUp', Math.max(1, pageByStatus.pickedUp - 1))}
+                          disabled={pageByStatus.pickedUp === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.pickedUp} of {getTotalPages(pickedUpOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('pickedUp', Math.min(getTotalPages(pickedUpOrders), pageByStatus.pickedUp + 1))}
+                          disabled={pageByStatus.pickedUp === getTotalPages(pickedUpOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -707,7 +438,7 @@ const StaffOrders = () => {
                       Out For Delivery
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {outForDeliveryOrders.map((order) => (
+                      {getPageSlice(outForDeliveryOrders, pageByStatus.outForDelivery).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -721,6 +452,29 @@ const StaffOrders = () => {
                         />
                       ))}
                     </div>
+                    {outForDeliveryOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('outForDelivery', Math.max(1, pageByStatus.outForDelivery - 1))}
+                          disabled={pageByStatus.outForDelivery === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.outForDelivery} of {getTotalPages(outForDeliveryOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('outForDelivery', Math.min(getTotalPages(outForDeliveryOrders), pageByStatus.outForDelivery + 1))}
+                          disabled={pageByStatus.outForDelivery === getTotalPages(outForDeliveryOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -730,7 +484,7 @@ const StaffOrders = () => {
                       Delivered
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {deliveredOrders.map((order) => (
+                      {getPageSlice(deliveredOrders, pageByStatus.delivered).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -744,6 +498,29 @@ const StaffOrders = () => {
                         />
                       ))}
                     </div>
+                    {deliveredOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('delivered', Math.max(1, pageByStatus.delivered - 1))}
+                          disabled={pageByStatus.delivered === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.delivered} of {getTotalPages(deliveredOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('delivered', Math.min(getTotalPages(deliveredOrders), pageByStatus.delivered + 1))}
+                          disabled={pageByStatus.delivered === getTotalPages(deliveredOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -753,7 +530,7 @@ const StaffOrders = () => {
                       Pending Payment
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {pendingPaymentOrders.map((order) => (
+                      {getPageSlice(pendingPaymentOrders, pageByStatus.pendingPayment).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -767,6 +544,29 @@ const StaffOrders = () => {
                         />
                       ))}
                     </div>
+                    {pendingPaymentOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('pendingPayment', Math.max(1, pageByStatus.pendingPayment - 1))}
+                          disabled={pageByStatus.pendingPayment === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.pendingPayment} of {getTotalPages(pendingPaymentOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('pendingPayment', Math.min(getTotalPages(pendingPaymentOrders), pageByStatus.pendingPayment + 1))}
+                          disabled={pageByStatus.pendingPayment === getTotalPages(pendingPaymentOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -776,7 +576,7 @@ const StaffOrders = () => {
                       Completed
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {completedOrders.map((order) => (
+                      {getPageSlice(completedOrders, pageByStatus.completed).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -790,6 +590,29 @@ const StaffOrders = () => {
                         />
                       ))}
                     </div>
+                    {completedOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('completed', Math.max(1, pageByStatus.completed - 1))}
+                          disabled={pageByStatus.completed === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.completed} of {getTotalPages(completedOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('completed', Math.min(getTotalPages(completedOrders), pageByStatus.completed + 1))}
+                          disabled={pageByStatus.completed === getTotalPages(completedOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -799,7 +622,7 @@ const StaffOrders = () => {
                       Cancelled
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {cancelledOrders.map((order) => (
+                      {getPageSlice(cancelledOrders, pageByStatus.cancelled).map((order) => (
                         <OrderCard
                           key={order.id}
                           order={order}
@@ -813,6 +636,29 @@ const StaffOrders = () => {
                         />
                       ))}
                     </div>
+                    {cancelledOrders.length > ORDERS_PER_PAGE && (
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('cancelled', Math.max(1, pageByStatus.cancelled - 1))}
+                          disabled={pageByStatus.cancelled === 1}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Prev
+                        </button>
+                        <span className="text-xs font-semibold text-slate-500">
+                          Page {pageByStatus.cancelled} of {getTotalPages(cancelledOrders)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPageFor('cancelled', Math.min(getTotalPages(cancelledOrders), pageByStatus.cancelled + 1))}
+                          disabled={pageByStatus.cancelled === getTotalPages(cancelledOrders)}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -835,6 +681,13 @@ const StaffOrders = () => {
                       onCancel={handleCloseAssignPanel}
                       selectedCount={selectedAssignIds.size}
                       totalGallons={selectedAssignGallons}
+                      weights={autoAssignWeights}
+                      previewEnabled={previewEnabled}
+                      onPreviewRecommended={handlePreviewRecommended}
+                      previewLoading={previewLoading}
+                      previewError={previewError}
+                      recommended={recommended}
+                      onAssignRecommended={handleAssignRecommended}
                     />
                   ) : (
                     <div className="bg-white/50 rounded-2xl p-12 text-center border border-slate-200 backdrop-blur-sm">
@@ -846,9 +699,22 @@ const StaffOrders = () => {
                   )}
                 </div>
             </div>
+
           </div>
         </div>
       </main>
+      
+      <CancelOrder 
+        confirmCancelOrder={confirmCancelOrder}
+        cancelTargetOrder={cancelTargetOrder}
+        closeCancelModal={closeCancelModal}
+        cancellingOrderId={cancelOrderId}
+      />
+      {ordersError && (
+        <p className="text-xs text-rose-600 mt-2">{ordersError}</p>
+      )}
+
+      
     </div>
   );
 };
