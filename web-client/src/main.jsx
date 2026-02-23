@@ -18,6 +18,7 @@ import AdminDashboard from './page/admin/AdminDashboard'
 import AdminRoute from './components/admin/AdminRoute'
 import StaffRoute from './components/staff/StaffRoute'
 import RiderRoute from './components/rider/RiderRoute'
+import CustomerRoute from './components/customer/CustomerRoute'
 
 
 createRoot(document.getElementById('root')).render(
@@ -28,10 +29,38 @@ createRoot(document.getElementById('root')).render(
             <Route path='/' element={<Landing />} />
             <Route path='/auth' element={<Auth />} />
             <Route path='/contact' element={<ContactUs />} />
-            <Route path='/home' element={<Home />} />
-            <Route path='/orders' element={<Order />} />
-            <Route path='/messages' element={<Message />} />
-            <Route path='/delivery' element={<Delivery />} />
+            <Route
+              path='/home'
+              element={(
+                <CustomerRoute>
+                  <Home />
+                </CustomerRoute>
+              )}
+            />
+            <Route
+              path='/orders'
+              element={(
+                <CustomerRoute>
+                  <Order />
+                </CustomerRoute>
+              )}
+            />
+            <Route
+              path='/messages'
+              element={(
+                <CustomerRoute>
+                  <Message />
+                </CustomerRoute>
+              )}
+            />
+            <Route
+              path='/delivery'
+              element={(
+                <CustomerRoute>
+                  <Delivery />
+                </CustomerRoute>
+              )}
+            />
             <Route
               path='/staff/orders'
               element={(
