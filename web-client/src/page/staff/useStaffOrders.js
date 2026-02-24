@@ -5,6 +5,8 @@ import { formatOrderId, getInitials } from '../../utils/staffFormatters';
 
 const ORDERS_PER_PAGE = 6;
 const AUTO_ASSIGN_WEIGHTS = { load: 0.5, orders: 0.4, capacity: 0.1, distance: 0.0 };
+const CACHE_KEY = 'staffOrdersCache_v1';
+const CACHE_TTL_MS = 60 * 1000;
 
 const useStaffOrders = () => {
   const isMountedRef = useRef(true);
@@ -15,6 +17,7 @@ const useStaffOrders = () => {
   const [showAssignPanel, setShowAssignPanel] = useState(false);
   const [assignError, setAssignError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [dispatchMinutesById, setDispatchMinutesById] = useState({});
   const [bulkDispatchMinutes, setBulkDispatchMinutes] = useState('');
@@ -48,9 +51,26 @@ const useStaffOrders = () => {
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.data || !parsed?.timestamp) return;
+      if (Date.now() - parsed.timestamp > CACHE_TTL_MS) return;
+      const cachedOrders = parsed?.data?.orders || [];
+      const cachedRiders = parsed?.data?.riders || [];
+      if (cachedOrders.length) setOrders(cachedOrders);
+      if (cachedRiders.length) setRiders(cachedRiders);
+    } catch {
+      // ignore cache errors
+    }
   }, []);
 
   useEffect(() => {
@@ -92,6 +112,9 @@ const useStaffOrders = () => {
   const mapRiders = (ridersRes) =>
     (ridersRes?.data || []).map((rider) => {
       const name = rider?.user?.name || `Rider ${String(rider._id).slice(-4)}`;
+      const maxCapacity = Number(rider.maxCapacityGallons ?? 0);
+      const currentLoad = Number(rider.currentLoadGallons ?? 0);
+      const remaining = Math.max(0, maxCapacity - currentLoad);
       return {
         id: rider._id,
         name,
@@ -99,17 +122,41 @@ const useStaffOrders = () => {
         status: rider.status === 'active' ? RiderStatus.AVAILABLE : RiderStatus.OFFLINE,
         avatarColor: rider.status === 'active' ? 'bg-blue-500' : 'bg-gray-400',
         currentOrders: rider.activeOrdersCount || 0,
+        maxCapacityGallons: maxCapacity,
+        currentLoadGallons: currentLoad,
+        remainingCapacityGallons: remaining,
+        isAtCapacity: maxCapacity > 0 && currentLoad >= maxCapacity,
       };
     });
 
   const refreshOrders = async () => {
-    const [ordersRes, ridersRes] = await Promise.all([
-      apiRequest('/staff/orders'),
-      apiRequest('/riders'),
-    ]);
-    if (!isMountedRef.current) return;
-    setOrders(mapOrders(ordersRes));
-    setRiders(mapRiders(ridersRes));
+    setIsRefreshing(true);
+    try {
+      const [ordersRes, ridersRes] = await Promise.all([
+        apiRequest('/staff/orders'),
+        apiRequest('/riders'),
+      ]);
+      if (!isMountedRef.current) return;
+      const nextOrders = mapOrders(ordersRes);
+      const nextRiders = mapRiders(ridersRes);
+      setOrders(nextOrders);
+      setRiders(nextRiders);
+      try {
+        localStorage.setItem(
+          CACHE_KEY,
+          JSON.stringify({
+            timestamp: Date.now(),
+            data: { orders: nextOrders, riders: nextRiders },
+          })
+        );
+      } catch {
+        // ignore cache errors
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsRefreshing(false);
+      }
+    }
   };
 
   useEffect(() => {
@@ -127,7 +174,9 @@ const useStaffOrders = () => {
         await refreshOrders();
       } catch (err) {
         if (!isMounted) return;
-        setLoadError(err?.message || 'Failed to load orders');
+        console.error('[StaffOrders] load error', err);
+        const status = err?.status ? ` (${err.status})` : '';
+        setLoadError(`${err?.message || 'Failed to load orders'}${status}`);
       } finally {
         if (!isMounted) return;
         setIsLoading(false);
@@ -220,34 +269,22 @@ const useStaffOrders = () => {
     setShowAssignPanel(false);
   };
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  const waitForTask = async (taskId, timeoutMs = 15000) => {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const res = await apiRequest(`/tasks/${taskId}`);
-      const status = res?.data?.status;
-      if (status === 'done') return res?.data;
-      if (status === 'failed') {
-        throw new Error(res?.data?.error || 'Task failed');
-      }
-      await sleep(500);
-    }
-    throw new Error('Task timed out');
-  };
-
   const handleAssignRider = async (riderId) => {
     const rider = riders.find((r) => r.id === riderId);
     const selectedIds = Array.from(selectedAssignIds);
 
     if (rider && selectedIds.length > 0) {
+      if (rider.isAtCapacity) {
+        setAssignError(`Cannot assign: ${rider.name} is already at max capacity.`);
+        return;
+      }
       let snapshot = null;
       try {
         setOrders((prev) => {
           snapshot = prev;
           return prev.map((o) =>
             selectedAssignIds.has(o.id)
-              ? { ...o, assignedRiderId: rider.id, assignedRider: rider.name }
+              ? { ...o, assignedRiderId: rider.id, assignedRider: rider.name, status: 'QUEUED' }
               : o
           );
         });
@@ -265,17 +302,10 @@ const useStaffOrders = () => {
           if (snapshot) setOrders(snapshot);
           return;
         }
-
-        const taskIds = results.map((r) => r.taskId).filter(Boolean);
-        if (taskIds.length > 0) {
-          try {
-            await Promise.all(taskIds.map((taskId) => waitForTask(taskId)));
-          } catch (err) {
-            setAssignError(err?.message || 'Some assignments failed');
-          }
-        }
-
-        await refreshOrders();
+        // Do not block UI waiting for task completion. Refresh in background.
+        refreshOrders();
+        setTimeout(refreshOrders, 1500);
+        setTimeout(refreshOrders, 5000);
 
         setSelectedAssignIds(new Set());
         handleCloseAssignPanel();
@@ -658,6 +688,7 @@ const useStaffOrders = () => {
     showAssignPanel,
     assignError,
     isLoading,
+    isRefreshing,
     loadError,
     dispatchMinutesById,
     setDispatchMinutesById,
