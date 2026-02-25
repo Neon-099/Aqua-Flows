@@ -198,7 +198,7 @@ export const getCheckoutSession = async ({ checkoutSessionId }) => {
   };
 };
 
-// Optional: signature verification if PayMongo sends one.
+//signature verification if PayMongo sends one.
 export const verifyPayMongoWebhook = (rawBody, signatureHeader) => {
   const secret = env.PAYMONGO_WEBHOOK_SECRET;
   if (!secret) return true; // allow if not configured (dev)

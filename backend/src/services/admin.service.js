@@ -53,8 +53,27 @@ export const listUsers = async ({
     User.countDocuments(filter),
   ]);
 
+  const customerIds = items.map((item) => item._id);
+  const customers = await Customer.find({ user_id: { $in: customerIds } });
+  const customerMap = new Map(customers.map((c) => [c.user_id, c]));
+
+  const riderIds = items.filter((item) => item.role === USER_ROLE.RIDER).map((item) => item._id);
+  const riders = riderIds.length ? await Rider.find({ user_id: { $in: riderIds } }) : [];
+  const riderMap = new Map(riders.map((r) => [r.user_id, r]));
+
+  const hydrated = items.map((user) => {
+    const customer = customerMap.get(user._id);
+    const rider = riderMap.get(user._id);
+    return {
+      ...user.toObject(),
+      address: customer?.address,
+      phone: customer?.phone,
+      maxCapacityGallons: rider?.maxCapacityGallons,
+    };
+  });
+
   return {
-    items,
+    items: hydrated,
     total,
     page: safePage,
     limit: safeLimit,
@@ -63,8 +82,29 @@ export const listUsers = async ({
 };
 
 export const createUser = async (payload) => {
-  const user = await User.create(payload);
-  return user;
+  const { address, phone, maxCapacityGallons, ...userPayload } = payload;
+  const user = await User.create(userPayload);
+  if (user.role === USER_ROLE.CUSTOMER && (address || phone)) {
+    await Customer.findOneAndUpdate(
+      { user_id: user._id },
+      { $set: { ...(address ? { address } : {}), ...(phone ? { phone } : {}) }, $setOnInsert: { user_id: user._id } },
+      { upsert: true }
+    );
+  }
+  if (user.role === USER_ROLE.RIDER && maxCapacityGallons !== undefined) {
+    const capacity = Number(maxCapacityGallons);
+    await Rider.findOneAndUpdate(
+      { user_id: user._id },
+      { $set: { maxCapacityGallons: capacity }, $setOnInsert: { user_id: user._id } },
+      { upsert: true }
+    );
+  }
+  return {
+    ...user.toObject(),
+    address,
+    phone,
+    maxCapacityGallons: user.role === USER_ROLE.RIDER ? maxCapacityGallons : undefined,
+  };
 };
 
 export const updateUser = async (id, payload) => {
@@ -77,7 +117,8 @@ export const updateUser = async (id, payload) => {
 
   const previousRole = user.role;
 
-  Object.entries(payload).forEach(([key, value]) => {
+  const { address, phone, maxCapacityGallons, ...rest } = payload;
+  Object.entries(rest).forEach(([key, value]) => {
     if (value !== undefined) {
       user[key] = value;
     }
@@ -85,7 +126,31 @@ export const updateUser = async (id, payload) => {
 
   await user.save();
 
-  return user;
+  if (user.role === USER_ROLE.CUSTOMER && (address !== undefined || phone !== undefined)) {
+    await Customer.findOneAndUpdate(
+      { user_id: user._id },
+      { $set: { ...(address !== undefined ? { address } : {}), ...(phone !== undefined ? { phone } : {}) } },
+      { upsert: true }
+    );
+  }
+  if (user.role === USER_ROLE.RIDER && maxCapacityGallons !== undefined) {
+    const capacity = Number(maxCapacityGallons);
+    await Rider.findOneAndUpdate(
+      { user_id: user._id },
+      { $set: { maxCapacityGallons: capacity }, $setOnInsert: { user_id: user._id } },
+      { upsert: true }
+    );
+  }
+
+  const customer = await Customer.findOne({ user_id: user._id });
+  const rider = await Rider.findOne({ user_id: user._id });
+
+  return {
+    ...user.toObject(),
+    address: customer?.address,
+    phone: customer?.phone,
+    maxCapacityGallons: rider?.maxCapacityGallons,
+  };
 };
 
 export const archiveUser = async (id) => {

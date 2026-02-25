@@ -34,7 +34,7 @@ export const getOrCreateConversation = async ({ senderUser, receiverId, orderId 
   const receiverRole = normalizeChatRole(receiverUser.role);
   assertRolePairAllowed(senderRole, receiverRole);
   await assertOrderScopeIfProvided({ orderId, userA: senderUser, userB: receiverUser });
-
+  
   const ids = [senderUser._id, receiverUser._id].sort();
   const participantsHash = `${ids[0]}:${ids[1]}`;
 

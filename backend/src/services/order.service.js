@@ -641,6 +641,40 @@ export const riderPickup = async ({ user, orderId }) => {
   }
 };
 
+export const riderBulkPickup = async ({ user, orderIds }) => {
+  if (user.role !== USER_ROLE.RIDER) {
+    throwError(403, 'Only riders can confirm pickup');
+  }
+
+  const ids = Array.isArray(orderIds) ? orderIds.filter(Boolean) : [];
+  if (ids.length === 0) {
+    throwError(400, 'Missing order_ids');
+  }
+
+  const results = [];
+  const failures = [];
+
+  for (const id of ids) {
+    try {
+      const order = await riderPickup({ user, orderId: id });
+      results.push(order);
+    } catch (err) {
+      failures.push({
+        order_id: id,
+        message: err?.message || 'Failed to confirm pickup',
+        status: err?.statusCode || 500,
+      });
+    }
+  }
+
+  return {
+    processed: results.length,
+    failed: failures.length,
+    results,
+    failures,
+  };
+};
+
 
 export const assignRider = async ({ user, orderId, riderId }) => {
   if (![USER_ROLE.STAFF, USER_ROLE.ADMIN].includes(user.role)) {
@@ -708,46 +742,12 @@ export const autoAssignRider = async({user, orderId, weights}) => {
       }
 
       const gallons = order.water_quantity;
-      const w = {
-        load: weights?.load ?? 0.5,
-        orders: weights?.orders ?? 0.4,
-        capacity: weights?.capacity ?? 0.1,
-        distance: weights?.distance ?? 0.0,
-      };
-
-      // Eligible riders query + scoring in DB
-      const candidates = await Rider.aggregate([
-        {
-          $match: {
-            status: 'active',
-            $expr: {
-              $gte: [
-                { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
-                gallons
-              ]
-            }
-          }
-        },
-        {
-          $addFields: {
-            remainingCapacity: { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
-          }
-        },
-        {
-          $addFields: {
-            score: {
-              $add: [
-                { $multiply: [w.load, { $divide: [1, { $add: ['$currentLoadGallons', 1] }] }] },
-                { $multiply: [w.orders, { $divide: [1, { $add: ['$activeOrdersCount', 1] }] }] },
-                { $multiply: [w.capacity, '$remainingCapacity'] },
-                { $multiply: [w.distance, 0] }
-              ]
-            }
-          }
-        },
-        { $sort: { score: -1, _id: 1 } },
-        { $limit: 1 }
-      ]).session(session);
+      const candidates = await getAutoAssignCandidates({
+        session,
+        gallons,
+        limit: 1,
+        weights,
+      });
 
       if (!candidates || candidates.length === 0) {
         throwError(409, 'NO_AVAILABLE_RIDER');
@@ -805,6 +805,103 @@ export const autoAssignRider = async({user, orderId, weights}) => {
   }
 }
 
+const buildWeights = (weights) => ({
+  load: weights?.load ?? 0.5,
+  orders: weights?.orders ?? 0.4,
+  capacity: weights?.capacity ?? 0.1,
+  distance: weights?.distance ?? 0.0,
+});
+
+const getAutoAssignCandidates = async ({ session, gallons, limit = 3, weights }) => {
+  const w = buildWeights(weights);
+  const pipeline = [
+    {
+      $match: {
+        status: 'active',
+        $expr: {
+          $gte: [
+            { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
+            Number(gallons || 0),
+          ],
+        },
+      },
+    },
+    {
+      $addFields: {
+        remainingCapacity: { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
+      },
+    },
+    {
+      $addFields: {
+        score: {
+          $add: [
+            { $multiply: [w.load, { $divide: [1, { $add: ['$currentLoadGallons', 1] }] }] },
+            { $multiply: [w.orders, { $divide: [1, { $add: ['$activeOrdersCount', 1] }] }] },
+            { $multiply: [w.capacity, '$remainingCapacity'] },
+            { $multiply: [w.distance, 0] },
+          ],
+        },
+      },
+    },
+    { $sort: { score: -1, _id: 1 } },
+    { $limit: Number(limit || 3) },
+  ];
+
+  const query = Rider.aggregate(pipeline);
+  if (session) query.session(session);
+  const candidates = await query;
+
+  if (!candidates.length) return [];
+
+  const userIds = [...new Set(candidates.map((c) => c.user_id).filter(Boolean))];
+  const users = await User.find({ _id: { $in: userIds } }).select('_id name');
+  const userById = new Map(users.map((u) => [u._id, u]));
+
+  return candidates.map((c, idx) => {
+    const user = userById.get(c.user_id);
+    return {
+      _id: c._id,
+      user_id: c.user_id,
+      name: user?.name || `Rider ${String(c._id).slice(-4)}`,
+      currentLoadGallons: c.currentLoadGallons || 0,
+      activeOrdersCount: c.activeOrdersCount || 0,
+      remainingCapacity: c.remainingCapacity || 0,
+      score: c.score || 0,
+      reason:
+        idx === 0
+          ? 'Best match: lowest load, fewest active orders, most remaining capacity.'
+          : 'Eligible rider based on capacity and current load.',
+    };
+  });
+};
+
+export const autoAssignPreview = async ({ user, orderId, weights }) => {
+  if (!['staff'].includes(user.role)) {
+    throwError(403, 'Only staff can preview auto-assign');
+  }
+
+  const order = await Order.findById(orderId);
+  if (!order) throwError(404, 'Order not found');
+  if (order.status !== ORDER_STATUS.CONFIRMED) {
+    throwError(400, 'Only confirmed orders can be assigned');
+  }
+  if (order.assigned_rider_id) {
+    throwError(409, 'Order already assigned');
+  }
+
+  const candidates = await getAutoAssignCandidates({
+    gallons: order.water_quantity,
+    limit: 3,
+    weights,
+  });
+
+  return {
+    order_id: order._id,
+    weights: buildWeights(weights),
+    candidates,
+  };
+};
+
 const applyEtaToOrder = async (session, order, stage = ORDER_STATUS.PICKED_UP) => {
   const customer = await Customer.findById(order.customer_id).select('default_address user_id');
   if (!customer) return;
@@ -845,6 +942,9 @@ export const riderStartDelivery = async ({ user, orderId }) => {
 
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
+    order.dispatch_queued_at = null;
+    order.dispatch_after_minutes = null;
+    order.dispatch_scheduled_for = null;
     await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
@@ -857,6 +957,40 @@ export const riderStartDelivery = async ({ user, orderId }) => {
   } finally {
     session.endSession();
   }
+};
+
+export const riderBulkStartDelivery = async ({ user, orderIds }) => {
+  if (user.role !== USER_ROLE.RIDER) {
+    throwError(403, 'Only riders can start delivery');
+  }
+
+  const ids = Array.isArray(orderIds) ? orderIds.filter(Boolean) : [];
+  if (ids.length === 0) {
+    throwError(400, 'Missing order_ids');
+  }
+
+  const results = [];
+  const failures = [];
+
+  for (const id of ids) {
+    try {
+      const order = await riderStartDelivery({ user, orderId: id });
+      results.push(order);
+    } catch (err) {
+      failures.push({
+        order_id: id,
+        message: err?.message || 'Failed to start delivery',
+        status: err?.statusCode || 500,
+      });
+    }
+  }
+
+  return {
+    processed: results.length,
+    failed: failures.length,
+    results,
+    failures,
+  };
 };
 
 export const queueDispatch = async ({ user, orderId, minutes }) => {
@@ -906,6 +1040,9 @@ export const dispatchOrder = async ({ user, orderId }) => {
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
     order.dispatched_at = new Date();
+    order.dispatch_queued_at = null;
+    order.dispatch_after_minutes = null;
+    order.dispatch_scheduled_for = null;
     await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
@@ -941,6 +1078,9 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
     await releaseRiderCapacity(session, resolvedRiderId, order.water_quantity);
     assertTransition(order.status, ORDER_STATUS.DELIVERED);
     order.status = ORDER_STATUS.DELIVERED;
+    order.dispatch_queued_at = null;
+    order.dispatch_after_minutes = null;
+    order.dispatch_scheduled_for = null;
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.DELIVERED, user._id);
 

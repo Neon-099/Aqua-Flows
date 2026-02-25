@@ -5,6 +5,7 @@ import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '.
 import { sendEmail } from '../utils/sendEmail.js';
 import crypto from 'crypto';
 import { env } from '../config/env.js';
+import Customer from '../models/Customer.model.js';
 
 export const registerUser = async (email, password, name, address, phone) => {
   const userExists = await User.findOne({ email });
@@ -15,16 +16,19 @@ export const registerUser = async (email, password, name, address, phone) => {
     email,
     password,
     name,
-    address,
-    phone,
     role: USER_ROLE.CUSTOMER,
   });
+  await Customer.findOneAndUpdate(
+    { user_id: user._id },
+    { $set: { address, phone }, $setOnInsert: { user_id: user._id } },
+    { upsert: true }
+  );
   return {
     _id: user._id,
     email: user.email,
     name: user.name,
-    address: user.address,
-    phone: user.phone,
+    address,
+    phone,
     role: user.role,
     accessToken: generateAccessToken(user._id),
     refreshToken: generateRefreshToken(user._id),
@@ -44,12 +48,13 @@ export const loginUser = async (email, password) => {
     err.statusCode = 401;
     throw err;
   }
+  const customer = await Customer.findOne({ user_id: user._id });
   return {
     _id: user._id,
     email: user.email,
     name: user.name,
-    address: user.address,
-    phone: user.phone,
+    address: customer?.address,
+    phone: customer?.phone,
     role: user.role,
     accessToken: generateAccessToken(user._id),
     refreshToken: generateRefreshToken(user._id),
