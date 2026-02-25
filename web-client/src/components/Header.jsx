@@ -1,20 +1,39 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useMemo } from 'react';
 import {
   LayoutDashboard,
   ClipboardList,
   MessageSquare,
   MapPin,
   Droplet,
+  User,
 } from 'lucide-react';
+
+import { useAuth } from '../contexts/AuthProvider';
 
 const NAV_ITEMS = [
   { to: '/home', label: 'Home', icon: LayoutDashboard },
   { to: '/orders', label: 'Orders', icon: ClipboardList },
   { to: '/messages', label: 'Messages', icon: MessageSquare },
-  { to: '/delivery', label: 'Track Delivery', icon: MapPin },
+  { to: '/profile', label: 'Profile', icon: User },
 ];
 
-const Header = ({ image, name }) => {
+const Header = ({name }) => {
+
+  const { user } = useAuth();
+
+  const profileName = user?.name || 'Customer';
+
+const initials = useMemo(() => {
+    if (!profileName) return 'CF';
+    return profileName
+      .split(' ')
+      .map((part) => part[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+  }, [profileName]);
+
   const location = useLocation();
 
   const navButtonClass = (isActive) =>
@@ -56,12 +75,8 @@ const Header = ({ image, name }) => {
             Household Account
           </p>
         </div>
-        <div className="w-10 h-10 rounded-full bg-slate-200 border-2 border-white shadow-md overflow-hidden">
-          <img
-            src={image || 'user'}
-            className="w-full h-full object-cover"
-            alt={name || 'profile'}
-          />
+        <div className="w-15 h-15 rounded-[1.6rem] bg-blue-600 text-white flex items-center justify-center text-2xl font-black shadow-lg shadow-blue-200">
+          {initials}
         </div>
       </div>
     </nav>
