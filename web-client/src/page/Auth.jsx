@@ -66,6 +66,14 @@ const Auth = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'phone') {
+      const digitsOnly = value.replace(/\D/g, '').slice(0, 11);
+      setFormData(prev => ({
+        ...prev,
+        [name]: digitsOnly
+      }));
+      return;
+    }
     setFormData(prev => ({
       ...prev,
       [name]: value
@@ -81,6 +89,17 @@ const Auth = () => {
       if(activeTab === 'signup'){
         if(formData.password !== formData.confirmPassword){
           setError('Passwords do not match');
+          setLoading(false);
+          return;
+        }
+        const strongPassword = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+        if (!strongPassword.test(formData.password)) {
+          setError('Password must be at least 8 characters with 1 uppercase, 1 number, and 1 special character.');
+          setLoading(false);
+          return;
+        }
+        if (formData.phone.length !== 11) {
+          setError('Phone number must be exactly 11 digits.');
           setLoading(false);
           return;
         }
@@ -370,7 +389,7 @@ const Auth = () => {
 
                 {/*PHONE NUMBER & ADDRESS*/}
                 <div className="relative mt-4">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  <div className="absolute left-4 top-1/3 -translate-y-1/2 text-slate-400">
                     <PhoneCallIcon size={20} />
                   </div>
                   <input
@@ -379,9 +398,15 @@ const Auth = () => {
                     value={formData.phone}
                     onChange={handleInputChange}
                     placeholder="Phone Number"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={11}
                     className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
                     required={activeTab === 'signup'}
                   />
+                  <p className="mt-2 text-xs text-slate-400 font-semibold">
+                    {formData.phone.length}/11 digits
+                  </p>
                 </div>
 
                 <div className="relative mt-4">

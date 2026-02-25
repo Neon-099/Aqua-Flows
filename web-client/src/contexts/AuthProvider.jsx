@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { apiRequest } from "../utils/api";
 
 const AuthContext = createContext();
 
@@ -105,6 +106,18 @@ const logout = async () => {
     }
 }
 
+const updateProfile = async (payload) => {
+    try {
+        const res = await apiRequest('/auth/profile', 'PUT', payload);
+        if (res?.user) {
+            setUser(res.user);
+        }
+        return { success: true, user: res?.user };
+    } catch (error) {
+        return { success: false, error: error?.message || 'Failed to update profile' };
+    }
+}
+
 const forgotPassword = async (email) => {
     try {
         const res = await fetch('/api/v1/auth/forgotpassword', {
@@ -150,6 +163,7 @@ const value = {
     forgotPassword,
     resetPassword,
     logout,
+    updateProfile,
     loading
 }
 
