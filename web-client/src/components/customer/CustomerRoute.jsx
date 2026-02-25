@@ -1,7 +1,7 @@
 import { useAuth } from '../../contexts/AuthProvider';
 import UnauthorizedAccess from '../UnauthorizedAccess';
 
-const StaffRoute = ({ children }) => {
+const CustomerRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -12,11 +12,11 @@ const StaffRoute = ({ children }) => {
     );
   }
 
-  if (!user || (user.role !== 'staff' && user.role !== 'admin')) {
+  if (!user || (user.role !== 'customer' && user.role !== 'user' && user.role !== 'admin')) {
     return <UnauthorizedAccess redirectTo="/auth" seconds={3} />;
   }
 
   return children;
 };
 
-export default StaffRoute;
+export default CustomerRoute;

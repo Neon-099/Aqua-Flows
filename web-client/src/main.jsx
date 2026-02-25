@@ -3,18 +3,21 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { BrowserRouter as Router, Routes, Route} from "react-router-dom"
 import Landing from './page/landing/Landing'
-import Home from './page/Home'
-import Message from './page/Message'
-import Delivery from './page/Delivery'
-import Order from './page/Order'
-import Auth from './page/Auth'
 import ContactUs from './page/landing/ContactUs'
+
+import Message from './page/customer/Message'
+import Delivery from './page/customer/Delivery'
+import Order from './page/customer/Order'
+import Profile from './page/customer/Profile'
+
+import Auth from './page/Auth'
 import StaffOrders from './page/staff/StaffOrders'
 import StaffMessages from './page/staff/StaffMessages'
 import RiderOrders from './page/RiderOrders'
 import { AuthProvider } from './contexts/AuthProvider'
 import AdminAuth from './page/admin/AdminAuth'
 import AdminDashboard from './page/admin/AdminDashboard'
+
 import AdminRoute from './components/admin/AdminRoute'
 import StaffRoute from './components/staff/StaffRoute'
 import RiderRoute from './components/rider/RiderRoute'
@@ -33,7 +36,7 @@ createRoot(document.getElementById('root')).render(
               path='/home'
               element={(
                 <CustomerRoute>
-                  <Home />
+                  <Delivery />
                 </CustomerRoute>
               )}
             />
@@ -54,10 +57,10 @@ createRoot(document.getElementById('root')).render(
               )}
             />
             <Route
-              path='/delivery'
+              path='/profile'
               element={(
                 <CustomerRoute>
-                  <Delivery />
+                  <Profile />
                 </CustomerRoute>
               )}
             />
