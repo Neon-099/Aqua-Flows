@@ -229,7 +229,7 @@ const OrderFormModal = ({
               disabled={isProcessingPayment}
               className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm uppercase tracking-[0.22em] hover:bg-slate-800 transition-all disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isProcessingPayment ? 'Processing GCash...' : 'Confirm Order'}
+              {isProcessingPayment ? paymentMethod === 'gcash' ? 'Processing GCash...' : 'Processing COD Payment' : 'Confirm Order'}
             </button>
           </aside>
         </form>
