@@ -2,7 +2,7 @@
 
 
 import express from 'express';
-import { register, login, logout, refreshToken, forgotPassword, resetPassword, getMe } from '../controllers/auth.controller.js';
+import { register, login, logout, refreshToken, forgotPassword, resetPassword, getMe, updateProfile } from '../controllers/auth.controller.js';
 import { protect, authorize } from '../middlewares/auth.middleware.js';
 import { authLimiter } from '../middlewares/rateLimit.middleware.js';
 import { validateRegister, validateLogin } from '../validators/auth.validator.js';
@@ -17,6 +17,7 @@ router.get('/refresh', refreshToken);
 router.post('/forgotpassword', authLimiter, forgotPassword);
 router.put('/resetpassword/:resetToken', authLimiter, resetPassword);
 router.get('/me', protect, getMe);
+router.put('/profile', protect, updateProfile);
 
 
 // Protected Test Routes

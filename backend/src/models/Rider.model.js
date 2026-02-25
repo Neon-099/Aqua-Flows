@@ -26,7 +26,7 @@ const riderSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 1,
-    default: 43,
+    // default: 0,
   },
   currentLoadGallons: {
     type: Number,

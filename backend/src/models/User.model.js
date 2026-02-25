@@ -36,16 +36,6 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Please provide a name'],
     trim: true,
   },
-  address: {
-    type: String,
-    required: [true, 'Please select an address option'],
-    trim: true,
-  },
-  phone: {
-    type: String,
-    required: [true, 'Please provide a phone number'],
-    trim: true,
-  },
   role: {
     type: String,
     enum: Object.values(USER_ROLE),
@@ -82,7 +72,7 @@ const ensureRoleDocument = async (user) => {
   if (user.role === USER_ROLE.CUSTOMER) {
     await Customer.findOneAndUpdate(
       { user_id: user._id },
-      { $setOnInsert: { user_id: user._id, default_address: user.address } },
+      { $setOnInsert: { user_id: user._id } },
       { upsert: true }
     );
     return;

@@ -13,7 +13,11 @@ const customerSchema = new mongoose.Schema({
     required: true,
     index: true,
   },
-  default_address: {
+  address: {
+    type: String,
+    trim: true,
+  },
+  phone: {
     type: String,
     trim: true,
   },

@@ -472,11 +472,11 @@ const Order = () => {
                         <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.18em]">
                           Delivery address
                         </p>
-                        <p className="font-black text-lg text-slate-900">Maple Residence · Dagupan City</p>
+                        <p className="font-black text-lg text-slate-900">{`${user?.address}, Mapandan`}</p>
                       </div>
                     </div>
                     <p className="text-sm text-slate-500 leading-relaxed">
-                      Unit 4B, Maple Residence, Phase 2, Brgy. San Miguel, Dagupan City, Pangasinan.
+                      {`${user?.address}, Mapandan, Pangasinan` || 'Address unavailable'}
                     </p>
                   </div>
 
@@ -491,9 +491,6 @@ const Order = () => {
                       </p>
                     </div>
                     <div className="mt-4 flex items-center justify-between text-xs text-blue-100">
-                      <span className="inline-flex items-center gap-1">
-                        <Clock size={14} /> Last delivery: Yesterday, 3:45 PM
-                      </span>
                       <button
                         onClick={() => setIsModalOpen(true)}
                         className="underline font-semibold hover:text-white"
@@ -533,7 +530,7 @@ const Order = () => {
                             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em]">
                               {order.orderCode} • {order.date}
                             </p>
-                            <p className="font-black text-slate-900 mt-1">{order.items}</p>
+                            <p className="font-black text-slate-900 mt-1">{order.qty}{order.items.slice(1)}</p>
                             <p className="text-sm text-slate-500 mt-1">
                               Qty {order.qty} · {order.address}
                             </p>
