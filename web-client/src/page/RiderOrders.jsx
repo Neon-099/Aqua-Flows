@@ -255,8 +255,26 @@ const RiderOrders = () => {
       );
     });
     try {
-      await Promise.all(ids.map((id) => apiRequest(`/orders/${id}/pickup`, 'PUT')));
-      setSelectedConfirmIds(new Set());
+      const res = await apiRequest('/orders/bulk/pickup', 'PUT', { order_ids: ids });
+      const failures = res?.data?.failures || [];
+      const failedIds = new Set(failures.map((f) => f.order_id));
+      if (failedIds.size > 0 && snapshot) {
+        setOrders((prev) =>
+          prev.map((order) => {
+            if (!failedIds.has(order.id)) return order;
+            const original = snapshot.find((row) => row.id === order.id);
+            return original || order;
+          })
+        );
+        setLoadError(`Failed to confirm pickup for ${failedIds.size} order(s).`);
+      }
+      setSelectedConfirmIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => {
+          if (!failedIds.has(id)) next.delete(id);
+        });
+        return next;
+      });
     } catch (err) {
       if (snapshot) setOrders(snapshot);
       setLoadError(err?.message || 'Failed to confirm pickup for selected orders');
@@ -276,8 +294,26 @@ const RiderOrders = () => {
       );
     });
     try {
-      await Promise.all(ids.map((id) => apiRequest(`/orders/${id}/start_delivery`, 'PUT')));
-      setSelectedDispatchIds(new Set());
+      const res = await apiRequest('/orders/bulk/start_delivery', 'PUT', { order_ids: ids });
+      const failures = res?.data?.failures || [];
+      const failedIds = new Set(failures.map((f) => f.order_id));
+      if (failedIds.size > 0 && snapshot) {
+        setOrders((prev) =>
+          prev.map((order) => {
+            if (!failedIds.has(order.id)) return order;
+            const original = snapshot.find((row) => row.id === order.id);
+            return original || order;
+          })
+        );
+        setLoadError(`Failed to start delivery for ${failedIds.size} order(s).`);
+      }
+      setSelectedDispatchIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => {
+          if (!failedIds.has(id)) next.delete(id);
+        });
+        return next;
+      });
     } catch (err) {
       if (snapshot) setOrders(snapshot);
       setLoadError(err?.message || 'Failed to start delivery for selected orders');
