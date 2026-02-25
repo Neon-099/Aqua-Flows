@@ -30,6 +30,7 @@ const useStaffOrders = () => {
   const [previewError, setPreviewError] = useState('');
   const [previewCandidates, setPreviewCandidates] = useState([]);
   const [previewOrderId, setPreviewOrderId] = useState(null);
+  const [queueNotice, setQueueNotice] = useState('');
   const [pageByStatus, setPageByStatus] = useState({
     pending: 1,
     assignable: 1,
@@ -74,19 +75,21 @@ const useStaffOrders = () => {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setOrders((prevOrders) =>
-        prevOrders.map((order) => {
-          if (order.timeRemaining && order.timeRemaining > 0) {
-            return { ...order, timeRemaining: order.timeRemaining - 1 };
+    setOrders((prevOrders) =>
+      prevOrders.map((order) => {
+        if (!order.dispatchScheduledFor || order.status !== OrderStatus.PICKED_UP) {
+          if (order.timeRemaining !== null) {
+            return { ...order, timeRemaining: null };
           }
           return order;
-        })
-      );
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
+        }
+        const target = new Date(order.dispatchScheduledFor).getTime();
+        const remaining = Math.max(0, Math.ceil((target - now) / 1000));
+        if (order.timeRemaining === remaining) return order;
+        return { ...order, timeRemaining: remaining };
+      })
+    );
+  }, [now]);
 
   const mapOrders = (ordersRes) =>
     (ordersRes?.data || []).map((order) => ({
@@ -105,7 +108,9 @@ const useStaffOrders = () => {
       dispatchAfterMinutes: order.dispatch_after_minutes || null,
       dispatchScheduledFor: order.dispatch_scheduled_for || null,
       dispatchedAt: order.dispatched_at || null,
-      timeRemaining: null,
+      timeRemaining: order.dispatch_scheduled_for
+        ? Math.max(0, Math.ceil((new Date(order.dispatch_scheduled_for).getTime() - Date.now()) / 1000))
+        : null,
       createdAt: order.created_at,
     }));
 
@@ -558,8 +563,18 @@ const useStaffOrders = () => {
     if (withSchedule.length === 0) return null;
     return Math.min(...withSchedule.map((o) => o.remaining));
   };
+  const queuedDispatchCount = pickedUpOrders.filter(
+    (o) => Number.isFinite(getDispatchRemaining(o)) && getDispatchRemaining(o) > 0
+  ).length;
+  const dispatchQueueCountdown = getNextDispatchCountdown();
 
   const handleQueueDispatch = async (orderId) => {
+    const current = orders.find((o) => o.id === orderId);
+    if (!current || current.status !== OrderStatus.PICKED_UP) {
+      setAssignError('Only picked up orders can be queued for dispatch.');
+      refreshOrders();
+      return;
+    }
     const minutes = Number(dispatchMinutesById[orderId] || 0);
     if (!minutes || minutes <= 0) {
       setAssignError('Enter dispatch minutes greater than 0.');
@@ -614,6 +629,8 @@ const useStaffOrders = () => {
     try {
       await Promise.all(targets.map((orderId) => handleQueueDispatch(orderId)));
       setAssignError('');
+      setQueueNotice(`Queued ${targets.length} order(s) for dispatch in ${minutes} minute(s).`);
+      setTimeout(() => setQueueNotice(''), 4000);
     } catch (err) {
       setAssignError(err?.message || 'Failed to queue dispatch');
     }
@@ -631,6 +648,8 @@ const useStaffOrders = () => {
   };
 
   const handleDispatchNow = async (orderId) => {
+    const current = orders.find((o) => o.id === orderId);
+    if (!current || current.status !== OrderStatus.PICKED_UP) return;
     let snapshot = null;
     try {
       setOrders((prev) => {
@@ -657,6 +676,10 @@ const useStaffOrders = () => {
       setAssignError('');
     } catch (err) {
       if (snapshot) setOrders(snapshot);
+      if (String(err?.message || '').includes('Order must be picked up')) {
+        refreshOrders();
+        return;
+      }
       setAssignError(err?.message || 'Failed to dispatch order');
     }
   };
@@ -713,6 +736,9 @@ const useStaffOrders = () => {
     cancelledOrders,
     pendingOrdersCount,
     selectedAssignGallons,
+    queueNotice,
+    queuedDispatchCount,
+    dispatchQueueCountdown,
     getTotalPages,
     getPageSlice,
     setPageFor,
