@@ -2,22 +2,55 @@ import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { z } from "zod";
 
+const optionalNumber = z.preprocess(
+  (value) => {
+    if (value === "" || value === null || value === undefined) return undefined;
+    if (typeof value === "string" && value.trim() === "") return undefined;
+    return value;
+  },
+  z.coerce.number().int("Max capacity must be a whole number").min(1, "Max capacity must be at least 1")
+);
+
 const baseSchema = z.object({
   name: z.string().min(2, "Name is required"),
   email: z.string().email("Enter a valid email"),
-  phone: z.string().min(5, "Phone is required"),
-  address: z.string().min(2, "Address is required"),
+  phone: z.string().optional(),
+  address: z.string().optional(),
   role: z.string().min(1, "Role is required"),
   password: z.string().optional(),
+  maxCapacityGallons: optionalNumber.optional(),
 });
 
-const createSchema = baseSchema.extend({
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
+const withRoleRules = (schema) =>
+  schema.superRefine((data, ctx) => {
+    if (data.role === "customer") {
+      if (!data.phone || !data.phone.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone is required", path: ["phone"] });
+      }
+      if (!data.address || !data.address.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Address is required", path: ["address"] });
+      }
+    }
+    if (data.role === "rider" && data.maxCapacityGallons === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Max capacity is required for riders",
+        path: ["maxCapacityGallons"],
+      });
+    }
+  });
 
-const editSchema = baseSchema.refine(
-  (data) => !data.password || data.password.length >= 6,
-  { message: "Password must be at least 6 characters", path: ["password"] }
+const createSchema = withRoleRules(
+  baseSchema.extend({
+    password: z.string().min(6, "Password must be at least 6 characters"),
+  })
+);
+
+const editSchema = withRoleRules(
+  baseSchema.refine((data) => !data.password || data.password.length >= 6, {
+    message: "Password must be at least 6 characters",
+    path: ["password"],
+  })
 );
 
 const emptyForm = {
@@ -25,6 +58,7 @@ const emptyForm = {
   email: "",
   phone: "",
   address: "",
+  maxCapacityGallons: "",
   role: "customer",
   password: "",
 };
@@ -43,6 +77,7 @@ const UserFormModal = ({ open, mode, initialData, onSubmit, onClose, loading }) 
         phone: initialData.phone || "",
         address: initialData.address || "",
         role: initialData.role || "customer",
+        maxCapacityGallons: initialData.maxCapacityGallons ?? "",
         password: "",
       });
     } else {
@@ -53,6 +88,20 @@ const UserFormModal = ({ open, mode, initialData, onSubmit, onClose, loading }) 
   const schema = useMemo(() => (mode === "create" ? createSchema : editSchema), [mode]);
 
   const handleChange = (key, value) => {
+    if (key === "role") {
+      setForm((prev) => {
+        const next = { ...prev, role: value };
+        if (value !== "customer") {
+          next.phone = "";
+          next.address = "";
+        }
+        if (value !== "rider") {
+          next.maxCapacityGallons = "";
+        }
+        return next;
+      });
+      return;
+    }
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -68,7 +117,19 @@ const UserFormModal = ({ open, mode, initialData, onSubmit, onClose, loading }) 
       return;
     }
     setErrors({});
-    onSubmit(result.data);
+    const payload = {
+      name: result.data.name,
+      email: result.data.email,
+      role: result.data.role,
+      ...(result.data.password ? { password: result.data.password } : {}),
+      ...(result.data.role === "customer"
+        ? { phone: result.data.phone?.trim(), address: result.data.address?.trim() }
+        : {}),
+      ...(result.data.role === "rider"
+        ? { maxCapacityGallons: result.data.maxCapacityGallons }
+        : {}),
+    };
+    onSubmit(payload);
   };
 
   if (!open) return null;
@@ -127,26 +188,46 @@ const UserFormModal = ({ open, mode, initialData, onSubmit, onClose, loading }) 
             {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          {form.role === "customer" && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold uppercase text-slate-500">Phone</label>
+                <input
+                  value={form.phone}
+                  onChange={(e) => handleChange("phone", e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase text-slate-500">Address</label>
+                <input
+                  value={form.address}
+                  onChange={(e) => handleChange("address", e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                {errors.address && <p className="mt-1 text-xs text-red-600">{errors.address}</p>}
+              </div>
+            </div>
+          )}
+
+          {form.role === "rider" && (
             <div>
-              <label className="text-xs font-semibold uppercase text-slate-500">Phone</label>
+              <label className="text-xs font-semibold uppercase text-slate-500">
+                Max Gallon Capacity
+              </label>
               <input
-                value={form.phone}
-                onChange={(e) => handleChange("phone", e.target.value)}
+                type="number"
+                min="1"
+                value={form.maxCapacityGallons}
+                onChange={(e) => handleChange("maxCapacityGallons", e.target.value)}
                 className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
-              {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
+              {errors.maxCapacityGallons && (
+                <p className="mt-1 text-xs text-red-600">{errors.maxCapacityGallons}</p>
+              )}
             </div>
-            <div>
-              <label className="text-xs font-semibold uppercase text-slate-500">Address</label>
-              <input
-                value={form.address}
-                onChange={(e) => handleChange("address", e.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-              />
-              {errors.address && <p className="mt-1 text-xs text-red-600">{errors.address}</p>}
-            </div>
-          </div>
+          )}
 
           <div>
             <label className="text-xs font-semibold uppercase text-slate-500">
