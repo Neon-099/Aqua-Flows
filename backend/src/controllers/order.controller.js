@@ -1,5 +1,6 @@
 // e:\Aquaflow\backend\src\controllers\order.controller.js
 import * as orderService from '../services/order.service.js';
+import { enqueueTask } from '../utils/taskQueue.js';
 
 const ok = (res, data, meta = {}) =>
   res.status(200).json({ success: true, data, meta });
@@ -93,12 +94,13 @@ export const cancelOrder = async (req, res, next) => {
 
 export const confirmOrder = async (req, res, next) => {
   try {
-    const result = await orderService.confirmOrder({
-      user: req.user,
-      orderId: req.params.id,
+    const taskId = enqueueTask({
+      type: 'confirmOrder',
+      payload: { user: req.user, orderId: req.params.id}
     });
-    return ok(res, result);
-    emitOrderUpdate(req, result, { source: 'confirmOrder' });
+    //THE STATUS STILL IN QUEUED
+    emitOrderUpdate(req, { _id: req.params.id, status: 'QUEUED'}, { source: 'confirmOrderQueued'});
+    return res.status(200).json({success: true, queued: true, taskId});
   } catch (err) {
     next(err);
   }
@@ -110,13 +112,13 @@ export const assignRider = async (req, res, next) => {
     if (!riderId) {
       return res.status(400).json({ success: false, message: 'Missing rider_id' });
     }
-
-    const result = await orderService.assignRider({
-      user: req.user,
-      orderId: req.params.id,
-      riderId,
+    //TASK QUEUED WORKER
+    const taskId = enqueueTask({
+      type: 'assignRider',
+      payload: {user: req.user, orderId: req.params.id, riderId},
     });
-    return ok(res, result);
+    emitOrderUpdate(req, { _id: req.params.id, status: 'QUEUED' }, { source: 'assignRiderQueued' });
+    return res.status(202).json({ success: true, queued: true, taskId});
   } catch (err) {
     next(err);
   }
@@ -129,6 +131,21 @@ export const autoAssignRider = async (req, res, next) => {
       orderId: req.params.id,
       weights: req.body?.weights,
     });
+    const order = result?.order || result;
+    emitOrderUpdate(req, order, { source: 'autoAssignRider'});
+    return ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const autoAssignPreview = async (req, res, next) => {
+  try {
+    const result = await orderService.autoAssignPreview({
+      user: req.user,
+      orderId: req.params.id,
+      weights: req.body?.weights,
+    });
     return ok(res, result);
   } catch (err) {
     next(err);
@@ -137,11 +154,17 @@ export const autoAssignRider = async (req, res, next) => {
 
 export const riderStartDelivery = async (req, res, next) => {
   try {
-    const result = await orderService.riderStartDelivery({
-      user: req.user,
-      orderId: req.params.id,
-    });
-    return ok(res, result);
+    const taskId = enqueueTask({
+      type: 'riderStartDelivery',
+      payload: {user: req.user, orderId: req.params.id}
+    })
+
+    emitOrderUpdate(
+      req,
+      { _id: req.params.id, status: 'QUEUED' },
+      { source: 'riderStartDeliveryQueued' }
+    );
+    return res.status(202).json({success: true, queued: true, taskId});
   } catch (err) {
     next(err);
   }
@@ -149,12 +172,11 @@ export const riderStartDelivery = async (req, res, next) => {
 
 export const queueDispatch = async (req, res, next) => {
   try {
-    const result = await orderService.queueDispatch({
-      user: req.user,
-      orderId: req.params.id,
-      minutes: req.body?.minutes,
-    });
-    return ok(res, result);
+    const taskId = enqueueTask({
+      type: 'queueDispatch',
+      payload: {user: req.user, orderId: req.params.id, minutes: req.body?.minutes},
+    })
+    return res.status(202).json({success: true, queued: true, taskId});
   } catch (err) {
     next(err);
   }
@@ -162,11 +184,11 @@ export const queueDispatch = async (req, res, next) => {
 
 export const dispatchOrder = async (req, res, next) => {
   try {
-    const result = await orderService.dispatchOrder({
-      user: req.user,
-      orderId: req.params.id,
+    const taskId = enqueueTask({
+      type: 'dispatchOrder', 
+      payload: {user: req.user, orderId: req.params.id},
     });
-    return ok(res, result);
+    return res.status(202).json({success: true, queued: true, taskId});
   } catch (err) {
     next(err);
   }
@@ -174,9 +196,35 @@ export const dispatchOrder = async (req, res, next) => {
 
 export const riderPickup = async (req, res, next) => {
   try {
-    const result = await orderService.riderPickup({
+    const taskId = enqueueTask({
+      type: 'riderPickup',
+      payload: {user: req.user, orderId: req.params.id},
+    })
+    return res.status(202).json({success: true, queued: true, taskId});
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const riderBulkPickup = async (req, res, next) => {
+  try {
+    const orderIds = req.body?.order_ids || req.body?.orderIds || [];
+    const result = await orderService.riderBulkPickup({
       user: req.user,
-      orderId: req.params.id,
+      orderIds,
+    });
+    return ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const riderBulkStartDelivery = async (req, res, next) => {
+  try {
+    const orderIds = req.body?.order_ids || req.body?.orderIds || [];
+    const result = await orderService.riderBulkStartDelivery({
+      user: req.user,
+      orderIds,
     });
     return ok(res, result);
   } catch (err) {
