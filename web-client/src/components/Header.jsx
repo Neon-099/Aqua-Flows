@@ -25,7 +25,6 @@ const Header = ({ name }) => {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationModal, setNotificationModal] = useState(false);
-  const setCloseNotificationModal = (value) => () => setNotificationModal(value);
 
   const profileName = user?.name || 'Customer';
 
@@ -84,8 +83,7 @@ const Header = ({ name }) => {
           return (
             <Link key={item.to} to={item.to}>
               <button className={navButtonClass(isActive)}
-                  onClick={() => setNotificationModal(true)}
-              >
+                >
                 <Icon size={18} /> {item.label}
               </button>
             </Link>
@@ -99,7 +97,8 @@ const Header = ({ name }) => {
             type="button"
             className="w-11 h-11 rounded-full bg-white/70 text-slate-700 flex items-center justify-center shadow-sm border border-slate-200"
             aria-label="Notifications"
-          >
+            onClick={() => setNotificationModal(true)}
+            >
             <Bell size={18} />
           </button>
           {unreadCount > 0 && (
@@ -111,7 +110,7 @@ const Header = ({ name }) => {
 
         <div className="text-right">
           <p className="text-sm font-black text-slate-900 leading-none">{name || 'Customer'}</p>
-          <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">
+          <p className="text-xs text-slate-400 mt-1 upp ercase font-bold tracking-tighter">
             Household Account
           </p>
         </div>
@@ -122,7 +121,7 @@ const Header = ({ name }) => {
 
         <NotificationModal 
           open={notificationModal}
-          onClose={setCloseNotificationModal(false)}/>
+          onClose={() => setNotificationModal(false)}/>
 
     </nav>
   );
