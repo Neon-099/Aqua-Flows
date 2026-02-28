@@ -19,7 +19,35 @@ export const apiRequest = async (path, method = 'GET', body) => {
     console.log(`[FE] ${method} ${path} ${ms}ms`);
   }
 
-  const data = await res.json().catch(() => ({}));
+  let data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== '/auth/refresh') {
+    try {
+      const refreshRes = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      const refreshData = await refreshRes.json().catch(() => ({}));
+      if (refreshRes.ok && refreshData?.token) {
+        localStorage.setItem('authToken', refreshData.token);
+        res = await fetch(`${baseUrl}/api/v1${path}`, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${refreshData.token}`,
+          },
+          credentials: 'include',
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        data = await res.json().catch(() => ({}));
+      } else {
+        localStorage.removeItem('authToken');
+      }
+    } catch {
+      localStorage.removeItem('authToken');
+    }
+  }
+
   if (!res.ok) {
     const err = new Error(data?.error || data?.message || 'Request failed');
     err.status = res.status;
