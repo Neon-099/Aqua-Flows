@@ -1,221 +1,42 @@
-import { useState, useEffect } from 'react';
 import { Droplet, Mail, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, LocationEdit, PhoneCallIcon } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import {useAuth } from '../contexts/AuthProvider'
-
-const ADDRESS_OPTIONS = [
-  { value: 'Amanoaoac', label: 'Amanoaoac' },
-  { value: 'Aserda', label: 'Aserda' },
-  { value: 'Apaya', label: 'Apaya ' },
-  { value: 'Baloling', label: 'Baloling ' },
-  { value: 'Coral', label: 'Coral' },
-  { value: 'Golden', label: 'Golden' },
-  { value: 'Luyan', label: 'Luyan' },
-  { value: 'Nilombot', label: 'Nilombot ' },
-  { value: 'Pias', label: 'Pias ' },
-  { value: 'Poblacion', label: 'Poblacion' },
-  { value: 'Primicias', label: 'Primicias' },
-  { value: 'Santa Maria', label: 'Santa Maria' },
-  { value: 'Torres', label: 'Torres' }
-];
-
+import { Link } from 'react-router-dom';
+import { ADDRESS_OPTIONS } from '../utils/addressOptions';
+import useAuthForm from '../hooks/useAuthForm';
 const Auth = () => {
-
-  const { login, register, forgotPassword, resetPassword } = useAuth();
-  const navigate = useNavigate();
-
-  const [error, setError ] = useState('');
-  const [loading, setLoading ] = useState(false);
-  
-  const [activeTab, setActiveTab] = useState('signin');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [resetStep, setResetStep] = useState('request');
-  const [resetEmail, setResetEmail] = useState('');
-  const [resetToken, setResetToken] = useState('');
-  const [resetPasswordValue, setResetPasswordValue] = useState('');
-  const [resetConfirm, setResetConfirm] = useState('');
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetError, setResetError] = useState('');
-  const [resetMessage, setResetMessage] = useState('');
-  const [showResetPassword, setShowResetPassword] = useState(false);
-  const [closeWarning, setCloseWarning] = useState(false);
-  const [resetCooldown, setResetCooldown] = useState(0);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    confirmPassword: '',
-    name: '',
-    phone: '',
-    address: ''
-  });
-
-  useEffect(() => {
-    const rootElements = ['html', 'body', '#root'];
-    rootElements.forEach(selector => {
-      const el = document.querySelector(selector);
-      if (el) {
-        el.style.margin = '0';
-        el.style.padding = '0';
-        el.style.width = '100vw';
-        el.style.overflowX = 'hidden';
-      }
-    });
-  }, []);
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    if (name === 'phone') {
-      const digitsOnly = value.replace(/\D/g, '').slice(0, 11);
-      setFormData(prev => ({
-        ...prev,
-        [name]: digitsOnly
-      }));
-      return;
-    }
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      if(activeTab === 'signup'){
-        if(formData.password !== formData.confirmPassword){
-          setError('Passwords do not match');
-          setLoading(false);
-          return;
-        }
-        const strongPassword = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-        if (!strongPassword.test(formData.password)) {
-          setError('Password must be at least 8 characters with 1 uppercase, 1 number, and 1 special character.');
-          setLoading(false);
-          return;
-        }
-        if (formData.phone.length !== 11) {
-          setError('Phone number must be exactly 11 digits.');
-          setLoading(false);
-          return;
-        }
-        const res = await register(formData);
-        if(res.success){
-          setActiveTab('signin')
-        }
-        else {
-          setError(res.error || 'Registration failed');
-        }
-      }
-      //LOGIN
-      else {
-        const res = await login(formData.email, formData.password);
-        if (res.success) {
-          if (res.role === 'customer') {
-            navigate('/home');
-          } else if (res.role === 'staff') {
-            navigate('/staff/orders');
-          } else if (res.role === 'rider') {
-            navigate('/rider/orders');
-          }  else {
-            setError('Login succeeded, but role is missing.');
-          }
-        } else {
-          setError(res.error || 'Login failed');
-        }
-      }
-    }
-    catch (error){
-      setError('An unexpected error occurred');
-    }
-    finally {
-      setLoading(false);
-    }
-  };
-
-  const openResetModal = () => {
-    setResetStep('request');
-    setResetEmail(formData.email || '');
-    setResetToken('');
-    setResetPasswordValue('');
-    setResetConfirm('');
-    setResetError('');
-    setResetMessage('');
-    setShowResetPassword(false);
-    setCloseWarning(false);
-    setResetCooldown(0);
-    setShowResetModal(true);
-  };
-
-  const closeResetModal = () => {
-    if (!closeWarning) {
-      setCloseWarning(true);
-      return;
-    }
-    setShowResetModal(false);
-    setCloseWarning(false);
-    setResetCooldown(0);
-  };
-
-  const handleRequestReset = async (e) => {
-    e.preventDefault();
-    setResetError('');
-    setResetMessage('');
-    setResetLoading(true);
-    try {
-      const res = await forgotPassword(resetEmail);
-      if (res.success) {
-        setResetMessage(res.message || 'Reset instructions sent. Check your email for the code.');
-        setResetStep('reset');
-        setResetCooldown(10 * 60);
-      } else {
-        setResetError(res.error || 'Could not send reset email.');
-      }
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (e) => {
-    e.preventDefault();
-    setResetError('');
-    setResetMessage('');
-    if (resetPasswordValue !== resetConfirm) {
-      setResetError('Passwords do not match');
-      return;
-    }
-    setResetLoading(true);
-    try {
-      const res = await resetPassword(resetToken, resetPasswordValue);
-      if (res.success) {
-        setResetMessage(res.message || 'Password reset successful. You can now sign in.');
-        setResetStep('request');
-        setResetToken('');
-        setResetPasswordValue('');
-        setResetConfirm('');
-        setResetCooldown(0);
-        setShowResetModal(false)
-      } else {
-        setResetError(res.error || 'Reset failed.');
-      }
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (resetCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResetCooldown(prev => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resetCooldown]);
-
-  console.log('Data: ',formData)
+  const {
+    error,
+    loading,
+    activeTab,
+    showPassword,
+    rememberMe,
+    showResetModal,
+    resetStep,
+    resetEmail,
+    resetToken,
+    resetPasswordValue,
+    resetConfirm,
+    resetLoading,
+    resetError,
+    resetMessage,
+    showResetPassword,
+    closeWarning,
+    resetCooldown,
+    formData,
+    setActiveTab,
+    setShowPassword,
+    setRememberMe,
+    setResetEmail,
+    setResetToken,
+    setResetPasswordValue,
+    setResetConfirm,
+    setShowResetPassword,
+    handleInputChange,
+    handleSubmit,
+    openResetModal,
+    closeResetModal,
+    handleRequestReset,
+    handleResetPassword
+  } = useAuthForm();
 
   return (
     <div className="min-h-screen w-screen font-sans text-slate-900 bg-white m-0 p-0 flex">

@@ -9,6 +9,7 @@ import Payment from '../models/Payment.model.js';
 import PaymentEvent from '../models/PaymentEvent.model.js';
 import OrderStatusHistory from '../models/OrderStatusHistory.model.js';
 import OrderAssignment from '../models/OrderAssignment.model.js';
+import { createOrderNotificationForOrder } from './notification.service.js';
 import {
   ORDER_STATUS,
   ORDER_PAYMENT_STATUS,
@@ -280,6 +281,11 @@ export const createOrder = async ({ user, payload }) => {
     }], { session });
 
     await addHistory(session, order[0]._id, ORDER_STATUS.PENDING, user._id);
+    await createOrderNotificationForOrder({
+      order: order[0],
+      status: ORDER_STATUS.PENDING,
+      session,
+    });
 
     let payment = null;
     if (normalizedPaymentMethod === PAYMENT_METHOD.GCASH) {
@@ -480,6 +486,11 @@ export const cancelOrder = async ({ user, orderId }) => {
     order.status = ORDER_STATUS.CANCELLED;
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.CANCELLED, user._id);
+    await createOrderNotificationForOrder({
+      order,
+      status: ORDER_STATUS.CANCELLED,
+      session,
+    });
 
     await session.commitTransaction();
     return order;
@@ -508,6 +519,11 @@ export const confirmOrder = async ({ user, orderId }) => {
         order.status = ORDER_STATUS.CONFIRMED;
         await order.save({ session });
         await addHistory(session, order._id, ORDER_STATUS.CONFIRMED, user._id);
+        await createOrderNotificationForOrder({
+          order,
+          status: ORDER_STATUS.CONFIRMED,
+          session,
+        });
       } else if (user.role === USER_ROLE.RIDER) {
         // Rider manual accept from PENDING -> CONFIRMED and assign to self
         assertTransition(order.status, ORDER_STATUS.CONFIRMED);
@@ -523,6 +539,11 @@ export const confirmOrder = async ({ user, orderId }) => {
         order.assigned_rider_id = resolvedRiderId;
         await order.save({ session });
         await addHistory(session, order._id, ORDER_STATUS.CONFIRMED, user._id);
+        await createOrderNotificationForOrder({
+          order,
+          status: ORDER_STATUS.CONFIRMED,
+          session,
+        });
 
         await OrderAssignment.create([{
           order_id: orderId,
@@ -630,6 +651,11 @@ export const riderPickup = async ({ user, orderId }) => {
     await applyEtaToOrder(session, order, ORDER_STATUS.PICKED_UP);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.PICKED_UP, user._id);
+    await createOrderNotificationForOrder({
+      order,
+      status: ORDER_STATUS.PICKED_UP,
+      session,
+    });
 
     await session.commitTransaction();
     return order;
@@ -948,6 +974,16 @@ export const riderStartDelivery = async ({ user, orderId }) => {
     await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
+    await createOrderNotificationForOrder({
+      order,
+      status: ORDER_STATUS.OUT_FOR_DELIVERY,
+      session,
+    });
+    await createOrderNotificationForOrder({
+      order,
+      status: ORDER_STATUS.OUT_FOR_DELIVERY,
+      session,
+    });
 
     await session.commitTransaction();
     return order;
@@ -1083,12 +1119,22 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
     order.dispatch_scheduled_for = null;
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.DELIVERED, user._id);
+    await createOrderNotificationForOrder({
+      order,
+      status: ORDER_STATUS.DELIVERED,
+      session,
+    });
 
     if (order.payment_method === PAYMENT_METHOD.COD) {
       assertTransition(order.status, ORDER_STATUS.PENDING_PAYMENT);
       order.status = ORDER_STATUS.PENDING_PAYMENT;
       await order.save({ session });
       await addHistory(session, order._id, ORDER_STATUS.PENDING_PAYMENT, user._id);
+      await createOrderNotificationForOrder({
+        order,
+        status: ORDER_STATUS.PENDING_PAYMENT,
+        session,
+      });
     } else if (
       order.payment_method === PAYMENT_METHOD.GCASH &&
       order.payment_status === ORDER_PAYMENT_STATUS.PAID
@@ -1097,6 +1143,16 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
       order.status = ORDER_STATUS.COMPLETED;
       await order.save({ session });
       await addHistory(session, order._id, ORDER_STATUS.COMPLETED, user._id);
+      await createOrderNotificationForOrder({
+        order,
+        status: ORDER_STATUS.COMPLETED,
+        session,
+      });
+      await createOrderNotificationForOrder({
+        order,
+        status: ORDER_STATUS.COMPLETED,
+        session,
+      });
     }
 
     await session.commitTransaction();
@@ -1133,6 +1189,11 @@ export const riderCancelPickup = async ({ user, orderId }) => {
     order.assigned_rider_id = null;
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.PENDING, user._id);
+    await createOrderNotificationForOrder({
+      order,
+      status: ORDER_STATUS.PENDING,
+      session,
+    });
 
     await session.commitTransaction();
     return order;
@@ -1167,6 +1228,11 @@ export const riderMarkPendingPayment = async ({ user, orderId }) => {
     order.status = ORDER_STATUS.PENDING_PAYMENT;
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.PENDING_PAYMENT, user._id);
+    await createOrderNotificationForOrder({
+      order,
+      status: ORDER_STATUS.PENDING_PAYMENT,
+      session,
+    });
 
     await session.commitTransaction();
     return order;
@@ -1245,6 +1311,11 @@ export const handlePaymongoWebhook = async ({ event, raw }) => {
           assertTransition(order.status, ORDER_STATUS.COMPLETED);
           order.status = ORDER_STATUS.COMPLETED;
           await addHistory(session, order._id, ORDER_STATUS.COMPLETED, payment.order_id);
+          await createOrderNotificationForOrder({
+            order,
+            status: ORDER_STATUS.COMPLETED,
+            session,
+          });
         }
 
         await order.save({ session });

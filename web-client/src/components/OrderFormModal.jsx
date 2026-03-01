@@ -46,7 +46,7 @@ const OrderFormModal = ({
               New order
             </p>
             <h2 className="text-2xl font-black text-slate-900">
-              Schedule your water refill
+              Refill your water
             </h2>
           </div>
           <button

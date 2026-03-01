@@ -5,6 +5,7 @@ import {
   Clock,
   Truck,
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { apiRequest } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthProvider';
 import Header from '../../components/Header'
@@ -156,6 +157,7 @@ const Order = () => {
     };
     setOrders((prev) => [newOrder, ...prev]);
     setCurrentPage(1);
+    toast.success('GCash order finalized.');
   };
 
   const handleSubmit = async (e) => {
@@ -238,12 +240,14 @@ const Order = () => {
         };
         setOrders((prev) => [newOrder, ...prev]);
         setCurrentPage(1);
+        toast.success('Order placed successfully.');
       }
 
       setIsProcessingPayment(false);
       setIsModalOpen(false);
     } catch (err) {
       setPaymentError(err?.message || 'Failed to create order');
+      toast.error(err?.message || 'Failed to create order');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -290,8 +294,10 @@ const Order = () => {
         )
       );
       setCancelTargetOrder(null);
+      toast.success('Order cancelled.');
     } catch (err) {
       setOrdersError(err?.message || 'Failed to cancel order');
+      toast.error(err?.message || 'Failed to cancel order');
     } finally {
       setCancellingOrderId('');
     }
@@ -324,6 +330,7 @@ const Order = () => {
 
     if (gcashStatus === 'cancelled') {
       setPaymentError('Payment was cancelled. You can retry checkout.');
+      toast.error('Payment was cancelled.');
       clearGcashQueryParam();
       return;
     }
@@ -336,6 +343,7 @@ const Order = () => {
     const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
     if (!pending?.payment_intent_id) {
       setPaymentError('Missing pending checkout data. Please start checkout again.');
+      toast.error('Missing pending checkout data. Please start checkout again.');
       clearGcashQueryParam();
       return;
     }
@@ -344,6 +352,7 @@ const Order = () => {
     finalizePaidGcashOrder(pending)
       .catch((err) => {
         setPaymentError(err?.message || 'Failed to finalize GCash order');
+        toast.error(err?.message || 'Failed to finalize GCash order');
       })
       .finally(() => {
         setIsProcessingPayment(false);

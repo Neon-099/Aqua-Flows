@@ -1,15 +1,18 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   ClipboardList,
   MessageSquare,
-  MapPin,
   Droplet,
   User,
+  Bell,
 } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthProvider';
+import { apiRequest } from '../utils/api';
+
+import NotificationModal from './customer/NotificationModal';
 
 const NAV_ITEMS = [
   { to: '/home', label: 'Home', icon: LayoutDashboard },
@@ -18,13 +21,14 @@ const NAV_ITEMS = [
   { to: '/profile', label: 'Profile', icon: User },
 ];
 
-const Header = ({name }) => {
-
+const Header = ({ name }) => {
   const { user } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationModal, setNotificationModal] = useState(false);
 
   const profileName = user?.name || 'Customer';
 
-const initials = useMemo(() => {
+  const initials = useMemo(() => {
     if (!profileName) return 'CF';
     return profileName
       .split(' ')
@@ -43,6 +47,24 @@ const initials = useMemo(() => {
         : 'bg-white/50 text-slate-600 hover:bg-white/80'
     }`;
 
+  useEffect(() => {
+    if (!user?._id || user?.role !== 'customer') return;
+
+    const fetchUnread = async () => {
+      try {
+        const res = await apiRequest('/notifications/orders/unread-count');
+        const count = res?.data?.count ?? 0;
+        setUnreadCount(count);
+      } catch {
+        // silent
+      }
+    };
+
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 10000);
+    return () => clearInterval(interval);
+  }, [user?._id, user?.role]);
+
   return (
     <nav
       className="flex items-center justify-between px-12 py-4 border-b border-slate-100 shrink-0 w-full"
@@ -60,7 +82,8 @@ const initials = useMemo(() => {
 
           return (
             <Link key={item.to} to={item.to}>
-              <button className={navButtonClass(isActive)}>
+              <button className={navButtonClass(isActive)}
+                >
                 <Icon size={18} /> {item.label}
               </button>
             </Link>
@@ -69,9 +92,25 @@ const initials = useMemo(() => {
       </div>
 
       <div className="flex items-center gap-4">
+        <div className="relative">
+          <button
+            type="button"
+            className="w-11 h-11 rounded-full bg-white/70 text-slate-700 flex items-center justify-center shadow-sm border border-slate-200"
+            aria-label="Notifications"
+            onClick={() => setNotificationModal(true)}
+            >
+            <Bell size={18} />
+          </button>
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </div>
+
         <div className="text-right">
           <p className="text-sm font-black text-slate-900 leading-none">{name || 'Customer'}</p>
-          <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">
+          <p className="text-xs text-slate-400 mt-1 upp ercase font-bold tracking-tighter">
             Household Account
           </p>
         </div>
@@ -79,6 +118,11 @@ const initials = useMemo(() => {
           {initials}
         </div>
       </div>
+
+        <NotificationModal 
+          open={notificationModal}
+          onClose={() => setNotificationModal(false)}/>
+
     </nav>
   );
 };
