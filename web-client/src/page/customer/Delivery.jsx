@@ -5,181 +5,45 @@ import {
   CheckCircle2, Package, RefreshCw, Truck, Home, Clock,
   CircleDot
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthProvider';
-import { apiRequest } from '../../utils/api';
-import { listConversations } from '../../utils/chatApi';
-
 import Header from '../../components/Header'
 import { Skeleton, SkeletonGroup } from '../../components/WireframeSkeleton';
+import useDelivery from '../../hooks/customer/useDelivery';
 
-const ACTIVE_ORDER_STATUSES = ['CONFIRMED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'PENDING_PAYMENT'];
-const HISTORY_STATUSES = ['COMPLETED', 'CANCELLED'];
 
-const PRICE_PER_GALLON = 15;
-const DELIVERY_FEE = 5;
-
-const STATUS_LABEL = {
-  PENDING: 'Pending',
-  CONFIRMED: 'Accepted',
-  PICKED_UP: 'In Process',
-  OUT_FOR_DELIVERY: 'Out for Delivery',
-  DELIVERED: 'Delivered',
-  PENDING_PAYMENT: 'Pending Payment',
-  COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
-};
-
-const money = (n) => `₱${Number(n || 0).toFixed(2)}`;
-const fmtDate = (d) =>
-  new Date(d).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-
-const sortByRecent = (arr) =>
-  [...arr].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
-
-const getDisplayEtaText = (order) => {
-  if (!order) return 'Wait for confirmation';
-  if (order.status === 'PENDING_PAYMENT' || order.status === 'COMPLETED') return 'No active ETA';
-  if (order.eta_text) return order.eta_text;
-  if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
-    return 'ETA will appear once rider picks up';
-  }
-  return 'Wait for confirmation';
-};
-
-const getProgressSteps = (status) => {
-  const steps = [
-    { label: "Confirmed", icon: CheckCircle2 },
-    { label: "Gallon Pickup", icon: Package },
-    { label: "Refilling in Progress", icon: RefreshCw },
-    { label: "Delivery in Progress", icon: Truck },
-    { label: "Delivered", icon: Home },
-    { label: "Pending Payment", icon: Clock },
-    { label: "Completed", icon: CheckCircle2 },
-  ];
-
-  const currentIndex = (() => {
-    if (status === 'CONFIRMED') return 0;
-    if (status === 'PICKED_UP') return 2;
-    if (status === 'OUT_FOR_DELIVERY') return 3;
-    if (status === 'DELIVERED') return 4;
-    if (status === 'PENDING_PAYMENT') return 5;
-    if (status === 'COMPLETED') return 6;
-    return 0;
-  })();
-
-  return steps.map((step, index) => ({
-    ...step,
-    active: index <= currentIndex,
-    current: index === currentIndex,
-  }));
-};
 
 const Delivery = () => {
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [orders, setOrders] = useState([])
-  const [conversations, setConversations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [historyPage, setHistoryPage] = useState(1);
-  const HISTORY_PER_PAGE = 4;
-
-  useEffect(() => {
-    let mounted = true;
-
-    const load = async (showLoading = false) => {
-      if (showLoading) setLoading(true);
-      setError('');
-      try {
-        const [ordersRes, convoRows] = await Promise.all([
-          apiRequest('/orders'),
-          listConversations(50),
-        ]);
-        if (!mounted) return;
-        setOrders(Array.isArray(ordersRes?.data) ? ordersRes.data : []);
-        setConversations(Array.isArray(convoRows) ? convoRows : []);
-      } catch (e) {
-        if (!mounted) return;
-        setError(e.message || 'Failed to load delivery data');
-      } finally {
-        if (mounted && showLoading) setLoading(false);
-      }
-    };
-
-    load(true);
-    const interval = setInterval(() => {
-      load(false);
-    }, 1000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  const latestActiveOrder = useMemo(() => {
-    const active = sortByRecent(orders).filter((o) => ACTIVE_ORDER_STATUSES.includes(o.status));
-    return active[0] || null;
-  }, [orders]);
-
-  const recentHistory = useMemo(() => {
-    return sortByRecent(orders).filter((o) => HISTORY_STATUSES.includes(o.status));
-  }, [orders]);
-
-  const latestSummaryOrder = useMemo(() => {
-    if (latestActiveOrder) return latestActiveOrder;
-    return sortByRecent(orders)[0] || null;
-  }, [orders, latestActiveOrder]);
-
-  const riderConversation = useMemo(() => {
-    const riderConvos = (conversations || []).filter(
-      (c) => c?.counterpartyRole === 'rider' && !c?.archivedAt
-    );
-    if (!riderConvos.length) return null;
-
-    if (latestActiveOrder?._id) {
-      const exact = riderConvos.find((c) => c?.orderId === latestActiveOrder._id);
-      if (exact) return exact;
-    }
-    return riderConvos[0];
-  }, [conversations, latestActiveOrder]);
-
-  const progressSteps = latestActiveOrder ? getProgressSteps(latestActiveOrder.status) : getProgressSteps('CONFIRMED');
-  const orderQty = Number(latestSummaryOrder?.water_quantity || 0);
-  const subtotal = orderQty * PRICE_PER_GALLON;
-  const total = Number(latestSummaryOrder?.total_amount ?? subtotal + DELIVERY_FEE);
-  const etaText = getDisplayEtaText(latestActiveOrder);
-  const isInitialLoading = loading && orders.length === 0;
-  const totalHistoryPages = Math.max(1, Math.ceil(recentHistory.length / HISTORY_PER_PAGE));
-  const historyStart = (historyPage - 1) * HISTORY_PER_PAGE;
-  const paginatedHistory = recentHistory.slice(historyStart, historyStart + HISTORY_PER_PAGE);
-
-  useEffect(() => {
-    setHistoryPage((prev) => Math.min(prev, totalHistoryPages));
-  }, [totalHistoryPages]);
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  const RiderName = latestActiveOrder?.assigned_rider_name
-  const initials = useMemo(() => {
-    if (!RiderName) return 'CF';
-    return RiderName
-      .split(' ')
-      .map((part) => part[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-  }, [RiderName]);
+  
+  const {
+    user,
+    loading,
+    error,
+    latestActiveOrder,
+    activeOrders,
+    selectedActiveOrder,
+    selectedActiveOrderId,
+    setSelectedActiveOrderId,
+    latestSummaryOrder,
+    recentHistory,
+    riderConversation,
+    progressSteps,
+    subtotal,
+    total,
+    etaText,
+    isInitialLoading,
+    totalHistoryPages,
+    historyPage,
+    setHistoryPage,
+    paginatedHistory,
+    getGreeting,
+    initials,
+    money,
+    fmtDate,
+    STATUS_LABEL,
+    riderName,
+    DELIVERY_FEE,
+    HISTORY_PER_PAGE,
+    navigate,
+  } = useDelivery();
 
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">
@@ -195,7 +59,7 @@ const Delivery = () => {
             {`${getGreeting()}, ${user?.name || 'Customer'}!`}
           </h1>
           <p className="text-slate-500 text-lg mt-2">
-            {latestActiveOrder 
+            {selectedActiveOrder 
               ? 'Your water refill is on its way. Stay hydrated!'
               : 'No active delivery. Place an order to get started.'}
           </p>
@@ -242,21 +106,36 @@ const Delivery = () => {
               </div>
             )}
 
-            {!loading && !error && latestActiveOrder && (
+            {!loading && !error && selectedActiveOrder && (
               /* Enhanced Status Card */
               <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <div className="flex justify-between items-start mb-12">
                   <div>
                     <h3 className="font-black text-2xl text-slate-800">
-                      Order #{latestActiveOrder.order_code || String(latestActiveOrder._id).slice(-8).toUpperCase()}
+                      Order #{selectedActiveOrder.order_code || String(selectedActiveOrder._id).slice(-8).toUpperCase()}
                     </h3>
                     <p className="text-slate-400 font-medium mt-1">
-                      {fmtDate(latestActiveOrder.created_at)}
+                      {fmtDate(selectedActiveOrder.created_at)}
                     </p>
                   </div>
-                  <span className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-sm font-bold px-6 py-2.5 rounded-full shadow-lg shadow-emerald-100 animate-pulse">
-                    {STATUS_LABEL[latestActiveOrder.status] || 'In Transit'}
-                  </span>
+                  <div className="flex flex-col items-end gap-3">
+                    <span className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-sm font-bold px-6 py-2.5 rounded-full shadow-lg shadow-emerald-100 animate-pulse">
+                      {STATUS_LABEL[selectedActiveOrder.status] || 'In Transit'}
+                    </span>
+                    {activeOrders.length > 1 && (
+                      <select
+                        value={selectedActiveOrderId}
+                        onChange={(e) => setSelectedActiveOrderId(e.target.value)}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
+                      >
+                        {activeOrders.map((order) => (
+                          <option key={order._id} value={order._id}>
+                            {order.order_code || String(order._id).slice(-6).toUpperCase()} · {STATUS_LABEL[order.status] || order.status}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </div>
 
                 {/* Enhanced Progress Bar with Icons */}
@@ -297,7 +176,7 @@ const Delivery = () => {
                 </div>
 
                 {/* Enhanced Driver Contact Section */}
-                {latestActiveOrder.assigned_rider_name && (
+                {selectedActiveOrder.assigned_rider_name && (
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 p-8 rounded-[2.5rem] flex flex-col sm:flex-row items-center justify-between border-2 border-blue-200/50 mt-16 shadow-sm">
                     <div className="flex items-center gap-6 mb-4 sm:mb-0">
                       <div className="relative">
@@ -308,12 +187,12 @@ const Delivery = () => {
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="font-black text-slate-800 text-xl">{latestActiveOrder.assigned_rider_name}</p>
+                          <p className="font-black text-slate-800 text-xl">{selectedActiveOrder.assigned_rider_name}</p>
                           <CircleDot size={16} className="text-emerald-500" fill="currentColor" />
                         </div>
                         <p className="text-blue-600 font-bold tracking-wide flex items-center gap-2">
                           <Truck size={16} />
-                          {latestActiveOrder.assigned_rider_name} • Active
+                          {selectedActiveOrder.assigned_rider_name} • Active
                         </p>
                         {etaText && (
                           <p className="text-slate-500 text-sm font-semibold mt-1 flex items-center gap-1">
@@ -325,7 +204,9 @@ const Delivery = () => {
                     </div>
                     <div className="flex gap-3">
                       <button 
-                        onClick={() => navigate('/messages')}
+                        onClick={() => navigate('/messages', {
+                          state: {orderId: selectedActiveOrder?._id || latestActiveOrder?._id || ''}
+                        })}
                         className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl text-white font-bold hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg shadow-blue-200"
                       >
                         <MessageSquare size={18} /> Message
@@ -559,7 +440,10 @@ const Delivery = () => {
                 <>
                   <div className="flex justify-between items-center mb-8">
                     <h3 className="font-black text-xl text-slate-800">Messages</h3>
-                    <MessageSquare size={20} className="text-slate-300" />
+                    <button >
+                      <MessageSquare size={20} className="text-slate-300" />
+                    </button>
+                    
                   </div>
                   {riderConversation ? (
                     <>
