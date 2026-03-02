@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthProvider';
+import { toast } from 'react-toastify';
 
 const INITIAL_FORM = {
   email: '',
@@ -99,7 +100,9 @@ const useAuthForm = () => {
         } else {
           const res = await login(formData.email, formData.password);
           if (res.success) {
+            toast.success("Logged in successfully")
             if (res.role === 'customer') {
+
               navigate('/home');
             } else if (res.role === 'staff') {
               navigate('/staff/orders');
