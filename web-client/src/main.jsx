@@ -22,6 +22,8 @@ import AdminRoute from './components/admin/AdminRoute'
 import StaffRoute from './components/staff/StaffRoute'
 import RiderRoute from './components/rider/RiderRoute'
 import CustomerRoute from './components/customer/CustomerRoute'
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 
 
 createRoot(document.getElementById('root')).render(
@@ -107,6 +109,9 @@ createRoot(document.getElementById('root')).render(
             />
           </Routes>
         </Router>
+
+        <ToastContainer />
+
     </AuthProvider>
   </StrictMode>,
 )

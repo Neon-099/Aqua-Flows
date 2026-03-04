@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+/* Toastify progress bar color */
+:root {
+  --toastify-color-progress-light: #0ea5e9; /* change to any color */
+  --toastify-color-progress-dark: #0ea5e9;
+}
+
+/* Toastify icon circle color */
+.Toastify__toast-icon svg {
+  fill: #0ea5e9; /* change to any color */
+}
