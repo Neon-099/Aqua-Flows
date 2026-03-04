@@ -19,10 +19,6 @@ const useStaffOrders = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [dispatchMinutesById, setDispatchMinutesById] = useState({});
-  const [bulkDispatchMinutes, setBulkDispatchMinutes] = useState('');
-  const [now, setNow] = useState(Date.now());
-  const dispatchingRef = useRef(new Set());
   const [cancelOrderId, setCancelOrderId] = useState('');
   const [cancelTargetOrder, setCancelTargetOrder] = useState(null);
   const [ordersError, setOrdersError] = useState('');
@@ -30,7 +26,6 @@ const useStaffOrders = () => {
   const [previewError, setPreviewError] = useState('');
   const [previewCandidates, setPreviewCandidates] = useState([]);
   const [previewOrderId, setPreviewOrderId] = useState(null);
-  const [queueNotice, setQueueNotice] = useState('');
   const [pageByStatus, setPageByStatus] = useState({
     pending: 1,
     assignable: 1,
@@ -74,23 +69,6 @@ const useStaffOrders = () => {
     }
   }, []);
 
-  useEffect(() => {
-    setOrders((prevOrders) =>
-      prevOrders.map((order) => {
-        if (!order.dispatchScheduledFor || order.status !== OrderStatus.PICKED_UP) {
-          if (order.timeRemaining !== null) {
-            return { ...order, timeRemaining: null };
-          }
-          return order;
-        }
-        const target = new Date(order.dispatchScheduledFor).getTime();
-        const remaining = Math.max(0, Math.ceil((target - now) / 1000));
-        if (order.timeRemaining === remaining) return order;
-        return { ...order, timeRemaining: remaining };
-      })
-    );
-  }, [now]);
-
   const mapOrders = (ordersRes) =>
     (ordersRes?.data || []).map((order) => ({
       id: order._id,
@@ -104,13 +82,7 @@ const useStaffOrders = () => {
       assignedRiderId: order.assigned_rider_id || null,
       assignedRider: order.assigned_rider_name || null,
       autoAccepted: Boolean(order.auto_accepted),
-      dispatchQueuedAt: order.dispatch_queued_at || null,
-      dispatchAfterMinutes: order.dispatch_after_minutes || null,
-      dispatchScheduledFor: order.dispatch_scheduled_for || null,
       dispatchedAt: order.dispatched_at || null,
-      timeRemaining: order.dispatch_scheduled_for
-        ? Math.max(0, Math.ceil((new Date(order.dispatch_scheduled_for).getTime() - Date.now()) / 1000))
-        : null,
       createdAt: order.created_at,
     }));
 
@@ -165,11 +137,6 @@ const useStaffOrders = () => {
   };
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
       try {
@@ -202,7 +169,7 @@ const useStaffOrders = () => {
         snapshot = prev;
         return prev.map((order) =>
           order.id === orderId
-            ? { ...order, status: OrderStatus.CONFIRMED, timeRemaining: null }
+            ? { ...order, status: OrderStatus.CONFIRMED }
             : order
         );
       });
@@ -215,7 +182,6 @@ const useStaffOrders = () => {
               ? {
                   ...order,
                   status: updated.status,
-                  timeRemaining: null,
                   autoAccepted: Boolean(updated.auto_accepted),
                 }
               : order
@@ -512,7 +478,7 @@ const useStaffOrders = () => {
         snapshot = prev;
         return prev.map((order) =>
           selectedPendingIds.has(order.id)
-            ? { ...order, status: OrderStatus.CONFIRMED, timeRemaining: null }
+            ? { ...order, status: OrderStatus.CONFIRMED }
             : order
         );
       });
@@ -547,93 +513,6 @@ const useStaffOrders = () => {
       return;
     }
     setShowAssignPanel(true);
-  };
-
-  const getDispatchRemaining = (order) => {
-    if (!order.dispatchScheduledFor) return null;
-    const target = new Date(order.dispatchScheduledFor).getTime();
-    const diff = Math.max(0, Math.ceil((target - now) / 1000));
-    return diff;
-  };
-
-  const getNextDispatchCountdown = () => {
-    const withSchedule = pickedUpOrders
-      .map((o) => ({ id: o.id, remaining: getDispatchRemaining(o) }))
-      .filter((o) => Number.isFinite(o.remaining));
-    if (withSchedule.length === 0) return null;
-    return Math.min(...withSchedule.map((o) => o.remaining));
-  };
-  const queuedDispatchCount = pickedUpOrders.filter(
-    (o) => Number.isFinite(getDispatchRemaining(o)) && getDispatchRemaining(o) > 0
-  ).length;
-  const dispatchQueueCountdown = getNextDispatchCountdown();
-
-  const handleQueueDispatch = async (orderId) => {
-    const current = orders.find((o) => o.id === orderId);
-    if (!current || current.status !== OrderStatus.PICKED_UP) {
-      setAssignError('Only picked up orders can be queued for dispatch.');
-      refreshOrders();
-      return;
-    }
-    const minutes = Number(dispatchMinutesById[orderId] || 0);
-    if (!minutes || minutes <= 0) {
-      setAssignError('Enter dispatch minutes greater than 0.');
-      return;
-    }
-    let snapshot = null;
-    try {
-      const nowTime = new Date();
-      const scheduledFor = new Date(nowTime.getTime() + minutes * 60 * 1000);
-      setOrders((prev) => {
-        snapshot = prev;
-        return prev.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                dispatchQueuedAt: nowTime.toISOString(),
-                dispatchAfterMinutes: minutes,
-                dispatchScheduledFor: scheduledFor.toISOString(),
-              }
-            : o
-        );
-      });
-      const res = await apiRequest(`/orders/${orderId}/queue_dispatch`, 'PUT', { minutes });
-      const updated = res?.data;
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                dispatchQueuedAt: updated?.dispatch_queued_at || o.dispatchQueuedAt,
-                dispatchAfterMinutes: updated?.dispatch_after_minutes || o.dispatchAfterMinutes,
-                dispatchScheduledFor: updated?.dispatch_scheduled_for || o.dispatchScheduledFor,
-              }
-            : o
-        )
-      );
-      setAssignError('');
-    } catch (err) {
-      if (snapshot) setOrders(snapshot);
-      setAssignError(err?.message || 'Failed to queue dispatch');
-    }
-  };
-
-  const handleQueueDispatchBulk = async () => {
-    const minutes = Number(bulkDispatchMinutes || 0);
-    if (!minutes || minutes <= 0) {
-      setAssignError('Enter dispatch minutes greater than 0.');
-      return;
-    }
-    const targets = pickedUpOrders.map((o) => o.id);
-    if (targets.length === 0) return;
-    try {
-      await Promise.all(targets.map((orderId) => handleQueueDispatch(orderId)));
-      setAssignError('');
-      setQueueNotice(`Queued ${targets.length} order(s) for dispatch in ${minutes} minute(s).`);
-      setTimeout(() => setQueueNotice(''), 4000);
-    } catch (err) {
-      setAssignError(err?.message || 'Failed to queue dispatch');
-    }
   };
 
   const handleDispatchNowBulk = async () => {
@@ -684,23 +563,6 @@ const useStaffOrders = () => {
     }
   };
 
-  useEffect(() => {
-    const dueOrders = orders.filter(
-      (o) =>
-        o.status === OrderStatus.PICKED_UP &&
-        o.dispatchScheduledFor &&
-        getDispatchRemaining(o) === 0
-    );
-
-    dueOrders.forEach((order) => {
-      if (dispatchingRef.current.has(order.id)) return;
-      dispatchingRef.current.add(order.id);
-      handleDispatchNow(order.id).finally(() => {
-        dispatchingRef.current.delete(order.id);
-      });
-    });
-  }, [orders, now]);
-
   return {
     ORDERS_PER_PAGE,
     autoAssignWeights: AUTO_ASSIGN_WEIGHTS,
@@ -713,10 +575,6 @@ const useStaffOrders = () => {
     isLoading,
     isRefreshing,
     loadError,
-    dispatchMinutesById,
-    setDispatchMinutesById,
-    bulkDispatchMinutes,
-    setBulkDispatchMinutes,
     cancelOrderId,
     cancelTargetOrder,
     ordersError,
@@ -736,13 +594,9 @@ const useStaffOrders = () => {
     cancelledOrders,
     pendingOrdersCount,
     selectedAssignGallons,
-    queueNotice,
-    queuedDispatchCount,
-    dispatchQueueCountdown,
     getTotalPages,
     getPageSlice,
     setPageFor,
-    getNextDispatchCountdown,
     handleAcceptOrder,
     handleCancelOrder,
     confirmCancelOrder,
@@ -760,8 +614,6 @@ const useStaffOrders = () => {
     handleAcceptSelected,
     handleOpenAssignPanel,
     handleAssignSelected,
-    handleQueueDispatch,
-    handleQueueDispatchBulk,
     handleDispatchNowBulk,
     handleDispatchNow,
   };

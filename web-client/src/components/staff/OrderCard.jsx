@@ -1,5 +1,5 @@
 // components/OrderCard.jsx
-import { Check, Clock, Droplet } from 'lucide-react';
+import { Check, Droplet } from 'lucide-react';
 import { getStatusColors } from '../../utils/staffFormatters';
 import { OrderStatus, PaymentMethod } from '../../constants/staff.constants';
 const OrderCard = ({
@@ -50,17 +50,6 @@ const OrderCard = ({
             {selectionLabel}
           </label>
         )}
-        {order.timeRemaining && (
-          <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 px-2.5 py-1 rounded-lg">
-            <Clock size={14} />
-            <span className="text-sm font-bold">
-              {Math.floor(order.timeRemaining / 60)
-                .toString()
-                .padStart(2, '0')}
-              :{(order.timeRemaining % 60).toString().padStart(2, '0')}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Customer Info */}
@@ -81,12 +70,6 @@ const OrderCard = ({
           </span>
         </div>
       </div>
-
-      {order.dispatchQueuedAt && (
-        <div className="mb-3 text-xs text-slate-500">
-          Queued at {new Date(order.dispatchQueuedAt).toLocaleTimeString()}
-        </div>
-      )}
 
       {/* Status Badges */}
       {order.autoAccepted && (

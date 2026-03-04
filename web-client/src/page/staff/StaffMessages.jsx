@@ -255,7 +255,7 @@ const StaffMessages = () => {
       <nav className="flex items-center justify-between px-12 py-4 bg-white border-b border-slate-100 shrink-0 w-full">
         <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl">
           <Droplet fill="currentColor" size={28} />
-          <span>AquaFlow Manager</span>
+          <span>AquaFlow Staff</span>
         </div>
 
         <div className="hidden md:flex gap-4">

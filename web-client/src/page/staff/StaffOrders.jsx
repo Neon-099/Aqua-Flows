@@ -28,8 +28,6 @@ const StaffOrders = () => {
     loadError,
     isRefreshing,
     isLoading,
-    bulkDispatchMinutes,
-    setBulkDispatchMinutes,
     cancelOrderId,
     cancelTargetOrder,
     ordersError,
@@ -52,9 +50,6 @@ const StaffOrders = () => {
     getTotalPages,
     getPageSlice,
     setPageFor,
-    queueNotice,
-    queuedDispatchCount,
-    dispatchQueueCountdown,
     handleAcceptOrder,
     handleCancelOrder,
     confirmCancelOrder,
@@ -72,8 +67,6 @@ const StaffOrders = () => {
     handleAcceptSelected,
     handleOpenAssignPanel,
     handleAssignSelected,
-    handleQueueDispatch,
-    handleQueueDispatchBulk,
     handleDispatchNowBulk,
   } = useStaffOrders();
 
@@ -88,7 +81,7 @@ const StaffOrders = () => {
       <nav className="flex items-center justify-between px-12 py-4 bg-white border-b border-slate-100 shrink-0 w-full">
         <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl">
           <Droplet fill="currentColor" size={28} />
-          <span>AquaFlow Manager</span>
+          <span>AquaFlow Staff</span>
         </div>
 
         <div className="hidden md:flex gap-4">
@@ -365,52 +358,14 @@ const StaffOrders = () => {
                     <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">
                       Picked Up
                     </h3>
-                    {queueNotice && (
-                      <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700">
-                        {queueNotice}
-                      </div>
-                    )}
                     <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-bold text-slate-900">Dispatch Queue (Bulk)</h4>
-                      {queuedDispatchCount > 0 && (
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                          Queued: {queuedDispatchCount}
-                        </span>
-                      )}
-                      {dispatchQueueCountdown !== null && dispatchQueueCountdown > 0 && (
-                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                          {String(Math.floor(dispatchQueueCountdown / 60)).padStart(2, '0')}:
-                          {String(dispatchQueueCountdown % 60).padStart(2, '0')}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500">Apply to all picked up orders.</p>
-                    {dispatchQueueCountdown !== null && dispatchQueueCountdown > 0 && (
-                      <p className="text-xs text-slate-600 mt-1">
-                        Queue running. {String(Math.floor(dispatchQueueCountdown / 60)).padStart(2, '0')}:
-                        {String(dispatchQueueCountdown % 60).padStart(2, '0')} remaining.
-                      </p>
-                    )}
-                  </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-slate-900">Dispatch</h4>
+                        </div>
+                        <p className="text-xs text-slate-500">Dispatch all picked up orders now.</p>
+                      </div>
                       <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          value={bulkDispatchMinutes}
-                          onChange={(e) => setBulkDispatchMinutes(e.target.value)}
-                          placeholder="Minutes"
-                          disabled={queuedDispatchCount > 0}
-                          className="w-24 px-2 py-1.5 rounded-lg border border-slate-200 text-xs disabled:bg-slate-100 disabled:text-slate-400"
-                        />
-                        <button
-                          onClick={handleQueueDispatchBulk}
-                          disabled={queuedDispatchCount > 0}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
-                        >
-                          Queue All
-                        </button>
                         <button
                           onClick={handleDispatchNowBulk}
                           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-white hover:bg-slate-900"

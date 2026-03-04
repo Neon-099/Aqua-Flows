@@ -10,49 +10,27 @@ import {
   Star,
   Truck,
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthProvider';
 import Header from '../../components/Header';
 import EditProfile from '../../components/customer/EditProfile';
-import { useNavigate } from 'react-router-dom';
 import { Skeleton, SkeletonGroup } from '../../components/WireframeSkeleton';
-
-const formatDate = (value) => {
-  if (!value) return 'Not available';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not available';
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-};
+import useProfile from '../../hooks/customer/useProfile';
 
 
 const Profile = () => {
-  const { user, logout, loading } = useAuth();
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const navigate = useNavigate();
-
-  const profileName = user?.name || 'Customer';
-  const profileEmail = user?.email || 'email@aquaflow.com';
-  const profilePhone = user?.phone || '+63 900 000 0000';
-  const profileAddress = user?.address || 'No address saved';
-  const memberSince = formatDate(user?.createdAt || user?.created_at);
   
-  const handleLogout = async () => {
-    await logout();
-    navigate('/auth');
-  }
-
-  const initials = useMemo(() => {
-    if (!profileName) return 'CF';
-    return profileName
-      .split(' ')
-      .map((part) => part[0])
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-  }, [profileName]);
+  const {
+    user,
+    loading,
+    profileName,
+    profileEmail,
+    profilePhone,
+    profileAddress,
+    memberSince,
+    initials,
+    handleLogout,
+    isEditOpen,
+    setIsEditOpen,
+  } = useProfile();
 
   if (loading) {
     return (
