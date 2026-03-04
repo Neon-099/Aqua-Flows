@@ -8,7 +8,7 @@ import { env } from '../config/env.js';
 import Customer from '../models/Customer.model.js';
 
 export const registerUser = async (email, password, name, address, phone) => {
-  const userExists = await User.findOne({ email });
+  const userExists = await User.findOne({ email: { $eq: email } });
   if (userExists) {
     throw new Error('User already exists');
   }

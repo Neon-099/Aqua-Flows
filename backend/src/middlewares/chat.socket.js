@@ -43,6 +43,7 @@ export const registerChatHandlers = (io, socket) => {
       const { conversationId, isTyping } = payload;
       const conversation = await Conversation.findById(conversationId);
       if (!conversation) throw new Error('Conversation not found');
+      if (conversation.archivedAt) throw new Error('Conversation is archived');
 
       assertUserInConversation(conversation, socket.user._id);
 
