@@ -25,6 +25,7 @@ const Header = ({ name }) => {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationModal, setNotificationModal] = useState(false);
+  const userId = user?._id || user?.id;
 
   const profileName = user?.name || 'Customer';
 
@@ -48,7 +49,7 @@ const Header = ({ name }) => {
     }`;
 
   useEffect(() => {
-    if (!user?._id || user?.role !== 'customer') return;
+    if (!userId || String(user?.role || '').toLowerCase() !== 'customer') return;
 
     const fetchUnread = async () => {
       try {
@@ -63,7 +64,7 @@ const Header = ({ name }) => {
     fetchUnread();
     const interval = setInterval(fetchUnread, 10000);
     return () => clearInterval(interval);
-  }, [user?._id, user?.role]);
+  }, [userId, user?.role]);
 
   return (
     <nav
@@ -121,6 +122,7 @@ const Header = ({ name }) => {
 
         <NotificationModal 
           open={notificationModal}
+          onChangeUnreadCount={setUnreadCount}
           onClose={() => setNotificationModal(false)}/>
 
     </nav>

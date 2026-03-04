@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../../utils/api';
 
-const NotificationModal = ({ open, onClose }) => {
+const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
@@ -14,9 +14,12 @@ const NotificationModal = ({ open, onClose }) => {
       setLoading(true);
       try {
         const res = await apiRequest('/notifications/orders?unread=false&limit=50');
-        setItems(res?.data || []);
+        const rows = res?.data || [];
+        setItems(rows);
+        onChangeUnreadCount?.(rows.filter((row) => !row.is_read).length);
       } catch {
         setItems([]);
+        onChangeUnreadCount?.(0);
       } finally {
         setLoading(false);
       }
@@ -30,11 +33,13 @@ const NotificationModal = ({ open, onClose }) => {
     setMarkingId(id);
     try {
       await apiRequest('/notifications/orders/mark-read', 'PUT', { ids: [id] });
-      setItems((prev) =>
-        prev.map((row) =>
+      setItems((prev) => {
+        const next = prev.map((row) =>
           row._id === id ? { ...row, is_read: true, read_at: new Date().toISOString() } : row
-        )
-      );
+        );
+        onChangeUnreadCount?.(next.filter((row) => !row.is_read).length);
+        return next;
+      });
     } finally {
       setMarkingId('');
     }
@@ -51,6 +56,7 @@ const NotificationModal = ({ open, onClose }) => {
           read_at: new Date().toISOString(),
         }))
       );
+      onChangeUnreadCount?.(0);
     } finally {
       setMarkingAll(false);
     }
