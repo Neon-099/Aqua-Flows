@@ -5,7 +5,7 @@ import { registerChatHandlers } from './chat.socket.js';
 
 
 //SOCKET BOOTSTRAP CONFIG
-const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+const defaultOrigins = env.CLIENT_URLS;
 const configuredOrigins = (env.CLIENT_URLS || env.CLIENT_URL || '')
   .split(',')
   .map((x) => x.trim())
