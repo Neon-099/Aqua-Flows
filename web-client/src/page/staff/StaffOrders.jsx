@@ -11,11 +11,14 @@ import AssignRiderPanel from '../../components/AssignRiderPanel';
 import { useAuth } from '../../contexts/AuthProvider';
 import CancelOrder from '../../components/CancelOrder';
 import useStaffOrders from './useStaffOrders';
+import StaffProfileModal from '../../components/staff/StaffProfileModal';
+import { useState } from 'react';
 
 
 const StaffOrders = () => {
   const { user } = useAuth()
   const location = useLocation()
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const {
     ORDERS_PER_PAGE,
     autoAssignWeights,
@@ -97,7 +100,11 @@ const StaffOrders = () => {
           </Link>
         </div>
 
-        <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => setProfileModalOpen(true)}
+          className="flex items-center gap-4 rounded-xl px-2 py-1 hover:bg-slate-100 transition-colors"
+        >
           <div className="text-right">
             <p className="text-sm font-black text-slate-900 leading-none">{user?.name}</p>
             <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">
@@ -107,7 +114,7 @@ const StaffOrders = () => {
           <div className="w-10 h-10 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold">
             {user?.name ? user.name.slice(0, 2).toUpperCase() : "ST"}
           </div>
-        </div>
+        </button>
       </nav>
 
       {/* Main Content */}
@@ -719,7 +726,7 @@ const StaffOrders = () => {
         <p className="text-xs text-rose-600 mt-2">{ordersError}</p>
       )}
 
-      
+      <StaffProfileModal open={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
     </div>
   );
 };

@@ -15,6 +15,7 @@ import { useAuth } from '../../contexts/AuthProvider';
 import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen } from '../../utils/chatApi';
 import { createChatSocket, emitWithAck } from '../../utils/socket';
 import { formatConversationTime, formatMessageTime } from '../../utils/messagingFormatters';
+import StaffProfileModal from '../../components/staff/StaffProfileModal';
 
 const title = (v) => (v ? `${v[0].toUpperCase()}${v.slice(1)}` : 'User');
 const short = (id) => String(id || '').slice(0, 6);
@@ -81,6 +82,7 @@ const StaffMessages = () => {
   const [connected, setConnected] = useState(false);
   const [typingMap, setTypingMap] = useState({});
   const [activeFilter, setActiveFilter] = useState('All');
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId) || null,
@@ -271,7 +273,11 @@ const StaffMessages = () => {
           </Link>
         </div>
 
-        <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => setProfileModalOpen(true)}
+          className="flex items-center gap-4 rounded-xl px-2 py-1 hover:bg-slate-100 transition-colors"
+        >
           <div className="text-right">
             <p className="text-sm font-black text-slate-900 leading-none">{user?.name}</p>
             <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">{connected ? 'Realtime online' : 'Offline mode'}</p>
@@ -279,7 +285,7 @@ const StaffMessages = () => {
           <div className="w-10 h-10 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold">
             {user?.name ? user.name.slice(0, 2).toUpperCase() : 'ST'}
           </div>
-        </div>
+        </button>
       </nav>
       
       <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-10 py-6">
@@ -494,6 +500,7 @@ const StaffMessages = () => {
           <span>All conversations are linked to their orders for easy tracking.</span>
         </div>
       </div>
+      <StaffProfileModal open={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
     </div>
   );
 };
