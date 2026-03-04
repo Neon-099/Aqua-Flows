@@ -20,13 +20,15 @@ const mapConversation = (row, myId) => {
   const name = other.name || `${title(role)} ${short(other.userId)}`;
   const label = row.counterpartyLabel || title(role);
   const counterpartyRole = row.counterpartyRole || role;
-  const shortOrderId = row.orderId ? String(row.orderId).slice(0, 8) : null;
+  const orderIdRaw = row.orderId ? String(row.orderId) : '';
+  const shortOrderId = orderIdRaw ? orderIdRaw.slice(0, 8) : null;
   return {
     id: row._id,
     name,
     role: label,
     otherRole: counterpartyRole,
     orderId: shortOrderId ? `#${shortOrderId}` : 'No order',
+    orderIdRaw,
     lastMsg: row.lastMessage || 'No messages yet',
     time: formatConversationTime(row.lastMessageAt || row.updatedAt || row.createdAt),
     status: row.orderStatus || 'Linked chat',
@@ -48,8 +50,13 @@ const mapMessage = (row, myId) => ({
   mine: row.senderId === myId,
 });
 
-const pickPreferredConversationId = ({ mapped, prevId, userRole }) => {
+const pickPreferredConversationId = ({ mapped, prevId, userRole, desiredOrderId }) => {
   if (!Array.isArray(mapped) || mapped.length === 0) return null;
+
+  if (desiredOrderId) {
+    const match = mapped.find((c) => c.orderIdRaw === desiredOrderId);
+    if (match) return match.id;
+  }
 
   if (!prevId) return mapped[0]?.id || null;
 
@@ -74,6 +81,10 @@ const pickPreferredConversationId = ({ mapped, prevId, userRole }) => {
 export default function Message() {
   const { user } = useAuth();
   const location = useLocation();
+  const desiredOrderId =
+    (location?.state && location.state.orderId && String(location.state.orderId)) ||
+    new URLSearchParams(location.search).get('orderId') ||
+    '';
   const token = localStorage.getItem('authToken');
   const socketRef = useRef(null);
   const stopTypingTimerRef = useRef(null);
@@ -124,13 +135,14 @@ export default function Message() {
         const rows = await listConversations(50, { archived: showArchived });
         const mapped = rows.map((r) => mapConversation(r, user._id));
         setConversations(mapped);
-        setSelectedId((prev) => {
-          return pickPreferredConversationId({
+        setSelectedId((prev) =>
+          pickPreferredConversationId({
             mapped,
             prevId: prev,
             userRole: user?.role,
-          });
-        });
+            desiredOrderId,
+          })
+        );
       } catch (e) {
         setError(e.message || 'Failed to load conversations');
       } finally {

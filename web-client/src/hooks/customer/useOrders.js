@@ -8,6 +8,14 @@ const DELIVERY_FEE = 5;
 const GCASH_VAT_FEE = 3;
 const GCASH_PENDING_KEY = 'gcashPendingIntent';
 const ORDERS_PER_PAGE = 4;
+const ETA_FALLBACK_TEXT = 'Waiting to assign rider';
+
+const normalizeNullableText = (value) => {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return '';
+  return text;
+};
 
 const getOrderStatusLabel = (status) => {
   if (status === 'DELIVERED' || status === 'COMPLETED') return 'Delivered';
@@ -17,13 +25,12 @@ const getOrderStatusLabel = (status) => {
 };
 
 const getDisplayEtaText = (order) => {
-  if (!order) return null;
-  if (order.status === 'PENDING_PAYMENT') return null;
-  if (order.eta_text) return order.eta_text;
-  if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
-    return 'ETA will appear once rider picks up';
+  if (order.status === 'PENDING') {
+    return ETA_FALLBACK_TEXT;
   }
-  return null;
+  else if (order.status === 'DELIVERED'){
+    return 'Delivered'
+  }
 };
 
 const statusStyles = (status) => {
@@ -89,7 +96,7 @@ const useOrders = () => {
             total: order.total_amount,
             status,
             name: user?.name || user?.name,
-            address: user?.address || user?.address || 'Address unavailable',
+            address: normalizeNullableText(user?.address) || 'Address unavailable',
             eta: getDisplayEtaText(order),
           };
         });
@@ -155,7 +162,7 @@ const useOrders = () => {
       total: created.total_amount,
       status,
       eta: getDisplayEtaText(created),
-      address: user?.address || 'Address unavailable',
+      address: normalizeNullableText(user?.address) || 'Address unavailable',
     };
     setOrders((prev) => [newOrder, ...prev]);
     setCurrentPage(1);
@@ -237,7 +244,7 @@ const useOrders = () => {
           total: created.total_amount,
           status,
           eta: getDisplayEtaText(created),
-          address: user?.address || 'Address unavailable',
+          address: normalizeNullableText(user?.address) || 'Address unavailable',
         };
         setOrders((prev) => [newOrder, ...prev]);
         setCurrentPage(1);

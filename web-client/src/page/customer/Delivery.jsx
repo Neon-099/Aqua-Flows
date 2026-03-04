@@ -44,6 +44,8 @@ const Delivery = () => {
     HISTORY_PER_PAGE,
     navigate,
   } = useDelivery();
+  const activeCount = progressSteps.filter((step) => step.active).length;
+  const currentStep = progressSteps[Math.max(0, activeCount - 1)];
 
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">
@@ -144,9 +146,9 @@ const Delivery = () => {
                   <div className="absolute top-6 left-0 w-full h-2 bg-slate-100 z-0 rounded-full"></div>
                   {/* Progress line with gradient */}
                   <div 
-                    className="absolute top-6 left-0 h-2 bg-gradient-to-r from-blue-500 to-blue-600 z-0 rounded-full transition-all duration-500"
+                    className={`absolute top-6 left-0 h-2 z-0 rounded-full transition-all duration-500 ${currentStep?.progressClass || 'bg-blue-600'}`}
                     style={{ 
-                      width: `${(progressSteps.filter(s => s.active).length / progressSteps.length) * 100}%` 
+                      width: `${(activeCount / progressSteps.length) * 100}%` 
                     }}
                   ></div>
                   
@@ -158,14 +160,14 @@ const Delivery = () => {
                           <div className={`z-10 w-12 h-12 rounded-full flex items-center justify-center mb-4 transition-all duration-300 shadow-lg ${
                             step.active 
                               ? step.current
-                                ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white scale-110 animate-pulse ring-4 ring-blue-200' 
-                                : 'bg-gradient-to-br from-blue-600 to-blue-700 text-white scale-105'
+                                ? `bg-gradient-to-br ${step.activeClasses} text-white scale-110 animate-pulse ring-4`
+                                : `bg-gradient-to-br ${step.activeClasses} text-white scale-105`
                               : 'bg-white border-2 border-slate-200 text-slate-300'
                           }`}>
                             <Icon size={20} className={step.active ? 'text-white' : 'text-slate-300'} />
                           </div>
                           <span className={`text-xs font-bold text-center w-28 leading-tight ${
-                            step.active ? 'text-blue-600' : 'text-slate-300'
+                            step.active ? step.textActiveClass : 'text-slate-300'
                           }`}>
                             {step.label}
                           </span>

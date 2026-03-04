@@ -16,6 +16,14 @@ const HISTORY_STATUSES = ['COMPLETED', 'CANCELLED'];
 
 const PRICE_PER_GALLON = 15;
 const DELIVERY_FEE = 5;
+const ETA_FALLBACK_TEXT = 'Waiting to assign rider';
+
+const normalizeNullableText = (value) => {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') return '';
+  return text;
+};
 
 const STATUS_LABEL = {
   PENDING: 'Pending',
@@ -42,24 +50,62 @@ const sortByRecent = (arr) =>
   [...arr].sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at));
 
 const getDisplayEtaText = (order) => {
-  if (!order) return 'Wait for confirmation';
-  if (order.status === 'PENDING_PAYMENT' || order.status === 'COMPLETED') return 'No active ETA';
-  if (order.eta_text) return order.eta_text;
-  if (order.status === 'PICKED_UP' || order.status === 'OUT_FOR_DELIVERY') {
-    return 'ETA will appear once rider picks up';
-  }
-  return 'Wait for confirmation';
+  if (!order) return ETA_FALLBACK_TEXT;
+  const etaText = normalizeNullableText(order.eta_text);
+  return etaText || ETA_FALLBACK_TEXT;
 };
 
 const getProgressSteps = (status) => {
   const steps = [
-    { label: 'Confirmed', icon: CheckCircle2 },
-    { label: 'Gallon Pickup', icon: Package },
-    { label: 'Refilling in Progress', icon: RefreshCw },
-    { label: 'Delivery in Progress', icon: Truck },
-    { label: 'Delivered', icon: Home },
-    { label: 'Pending Payment', icon: Clock },
-    { label: 'Completed', icon: CheckCircle2 },
+    {
+      label: 'Confirmed',
+      icon: CheckCircle2,
+      activeClasses: 'from-emerald-500 to-emerald-600 ring-emerald-200',
+      textActiveClass: 'text-emerald-600',
+      progressClass: 'bg-emerald-500',
+    },
+    {
+      label: 'Gallon Pickup',
+      icon: Package,
+      activeClasses: 'from-sky-500 to-sky-600 ring-sky-200',
+      textActiveClass: 'text-sky-600',
+      progressClass: 'bg-sky-500',
+    },
+    {
+      label: 'Refilling in Progress',
+      icon: RefreshCw,
+      activeClasses: 'from-violet-500 to-violet-600 ring-violet-200',
+      textActiveClass: 'text-violet-600',
+      progressClass: 'bg-violet-500',
+    },
+    {
+      label: 'Delivery in Progress',
+      icon: Truck,
+      activeClasses: 'from-amber-500 to-amber-600 ring-amber-200',
+      textActiveClass: 'text-amber-600',
+      progressClass: 'bg-amber-500',
+    },
+    {
+      label: 'Delivered',
+      icon: Home,
+      activeClasses: 'from-cyan-500 to-cyan-600 ring-cyan-200',
+      textActiveClass: 'text-cyan-600',
+      progressClass: 'bg-cyan-500',
+    },
+    {
+      label: 'Pending Payment',
+      icon: Clock,
+      activeClasses: 'from-rose-500 to-rose-600 ring-rose-200',
+      textActiveClass: 'text-rose-600',
+      progressClass: 'bg-rose-500',
+    },
+    {
+      label: 'Completed',
+      icon: CheckCircle2,
+      activeClasses: 'from-emerald-600 to-emerald-700 ring-emerald-300',
+      textActiveClass: 'text-emerald-700',
+      progressClass: 'bg-emerald-600',
+    },
   ];
 
   const currentIndex = (() => {

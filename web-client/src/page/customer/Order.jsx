@@ -47,6 +47,13 @@ const Order = () => {
     statusStyles,
     ORDERS_PER_PAGE
   } = useOrders()
+  const safeAddress = (() => {
+    const value = String(user?.address ?? '').trim();
+    if (!value || value.toLowerCase() === 'null' || value.toLowerCase() === 'undefined') {
+      return 'Address unavailable';
+    }
+    return value;
+  })();
 
   const statusSortRank = {
     Pending: 1,
@@ -184,11 +191,11 @@ const Order = () => {
                         <p className="text-[11px] text-slate-400 font-bold uppercase tracking-[0.18em]">
                           Delivery address
                         </p>
-                        <p className="font-black text-lg text-slate-900">{`${user?.address}, Mapandan`}</p>
+                        <p className="font-black text-lg text-slate-900">{`${safeAddress}, Mapandan`}</p>
                       </div>
                     </div>
                     <p className="text-sm text-slate-500 leading-relaxed">
-                      {`${user?.address}, Mapandan, Pangasinan` || 'Address unavailable'}
+                      {safeAddress === 'Address unavailable' ? safeAddress : `${safeAddress}, Mapandan, Pangasinan`}
                     </p>
                   </div>
 
@@ -256,11 +263,9 @@ const Order = () => {
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm text-slate-600">
-                          {order.eta ? (
-                            <span className="inline-flex items-center gap-2">
-                              <Clock size={16} /> {order.eta}
-                            </span>
-                          ) : <span />}
+                          <span className="inline-flex items-center gap-2">
+                            <Clock size={16} /> {order.eta || 'Waiting to assign rider'}
+                          </span>
                           <div className="flex items-center gap-3">
                             {order.rawStatus === 'PENDING' && (
                               <button
