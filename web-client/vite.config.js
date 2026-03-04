@@ -10,7 +10,7 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      '/api': 'https://aqua-flows-fcko.onrender.com/'
+      '/api': 'https://aqua-flow-v5f6.onrender.com/'
     }
   }
 })
