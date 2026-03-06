@@ -4,7 +4,7 @@ const resolveSocketUrl = () => {
   const explicit = import.meta.env.VITE_SOCKET_URL;
   if (explicit) return explicit;
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL;
+  const apiBase = import.meta.env.VITE_API_BASE_URL || 'https://aqua-flow-v5f6.onrender.com' || window.location.origin;
   if (apiBase) return apiBase;
 
   return window.location.origin;

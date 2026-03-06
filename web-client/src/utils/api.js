@@ -1,7 +1,7 @@
 // e:\Aquaflow\web-client\src\utils\api.js
 export const apiRequest = async (path, method = 'GET', body) => {
   const start = performance.now();
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'https://aqua-flow-v5f6.onrender.com' || window.location.origin;
   const token = localStorage.getItem('authToken');
   let res;
   try {
