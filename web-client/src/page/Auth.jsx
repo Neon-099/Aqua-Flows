@@ -44,9 +44,11 @@ const Auth = () => {
       {/* Left Section - Informational Panel */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-b from-blue-50 to-white flex-col p-12 relative">
         {/* Logo */}
-        <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl mb-12">
-          <Droplet fill="currentColor" size={28} />
-          <span>AquaFlow</span>
+        <div className=" gap-2 text-blue-600 font-bold text-2xl mb-12">
+          <Link to='/' className='flex items-center' >
+            <img src="AQ_LOGO.png" alt="" className='w-12 h-10'/>
+            <p>AquaFlow</p>
+          </Link>
         </div>
 
         {/* Main Content - Centered Vertically */}

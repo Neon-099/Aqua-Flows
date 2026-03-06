@@ -72,7 +72,7 @@ const Header = ({ name }) => {
       style={{ backgroundColor: '#E9F1F9' }}
     >
       <div className="flex items-center gap-2 text-blue-600 font-bold text-2xl">
-        <Droplet fill="currentColor" size={28} />
+        <img src="AQ_LOGO.png" alt="" className='h-10 w-12' />
         <span>AquaFlow</span>
       </div>
 
