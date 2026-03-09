@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Filter, LayoutGrid, Plus, Search, Users } from "lucide-react";
 import ConfirmDialog from "../../components/admin/ConfirmDialog";
+import NotifyModal from "../../components/admin/NotifyModal";
 import ToastStack from "../../components/admin/ToastStack";
 import UserFormModal from "../../components/admin/UserFormModal";
 import UserTable from "../../components/admin/UserTable";
@@ -20,7 +21,7 @@ const roleOptions = [
   { label: "Customer", value: "customer" },
 ];
 
-const AdminDashboard = () => {
+const AdminDashboard = ({ embedded = false }) => {
   const [activeTab, setActiveTab] = useState("active");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -40,8 +41,12 @@ const AdminDashboard = () => {
   const [isError, setIsError] = useState(false);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [notify, setNotify] = useState({ open: false, title: "", message: "" });
+  const [submitError, setSubmitError] = useState("");
+  const [submitInfo, setSubmitInfo] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 400);
@@ -84,6 +89,14 @@ const AdminDashboard = () => {
     loadUsers(params);
   }, [params]);
 
+  useEffect(() => {
+    if (formOpen) return undefined;
+    const intervalId = setInterval(() => {
+      loadUsers(params);
+    }, 10000);
+    return () => clearInterval(intervalId);
+  }, [params, formOpen]);
+
   const users = data?.items || [];
   const totalPages = data?.pages || 1;
 
@@ -97,28 +110,64 @@ const AdminDashboard = () => {
 
   const handleCreate = async (payload) => {
     setSaving(true);
+    setSubmitError("");
+    setSubmitInfo("Saving user...");
+    const slowTimer = setTimeout(() => {
+      setSubmitInfo("Still processing... this is taking longer than usual.");
+    }, 4000);
     try {
       await createAdminUser(payload);
-      pushToast({ type: "success", title: "User created" });
+      setSaving(false);
+      setSubmitInfo("");
       setFormOpen(false);
-      await loadUsers(params);
+      setNotify({
+        open: true,
+        title: "User created",
+        message: "New user has been created successfully.",
+      });
+      loadUsers(params);
     } catch (err) {
+      const errorText = err?.status
+        ? `(${err.status}) ${err.message || "Create failed"}`
+        : err.message || "Create failed";
+      setSubmitError(errorText);
+      setSubmitInfo("");
       pushToast({ type: "error", title: "Create failed", message: err.message });
     } finally {
+      clearTimeout(slowTimer);
       setSaving(false);
     }
   };
 
   const handleUpdate = async (id, payload) => {
     setSaving(true);
+    setSubmitError("");
+    setSubmitInfo("Saving changes...");
+    const slowTimer = setTimeout(() => {
+      setSubmitInfo("Still processing... this is taking longer than usual.");
+    }, 4000);
     try {
       await updateAdminUser(id, payload);
-      pushToast({ type: "success", title: "User updated" });
+      const previousRole = selectedUser?.role;
+      const nextRole = payload?.role;
+      const roleChanged = previousRole && nextRole && previousRole !== nextRole;
+      pushToast({
+        type: "success",
+        title: roleChanged ? `Role changed: ${previousRole} -> ${nextRole}` : "User updated",
+      });
+      setSaving(false);
+      setSubmitInfo("");
       setFormOpen(false);
-      await loadUsers(params);
+      loadUsers(params);
     } catch (err) {
+      const errorText = err?.status
+        ? `(${err.status}) ${err.message || "Update failed"}`
+        : err.message || "Update failed";
+      setSubmitError(errorText);
+      setSubmitInfo("");
       pushToast({ type: "error", title: "Update failed", message: err.message });
     } finally {
+      clearTimeout(slowTimer);
       setSaving(false);
     }
   };
@@ -130,7 +179,7 @@ const AdminDashboard = () => {
       pushToast({ type: "success", title: "User archived" });
       setConfirmOpen(false);
       setPendingArchive(null);
-      await loadUsers(params);
+      loadUsers(params);
     } catch (err) {
       pushToast({ type: "error", title: "Archive failed", message: err.message });
     } finally {
@@ -143,7 +192,7 @@ const AdminDashboard = () => {
     try {
       await restoreAdminUser(id);
       pushToast({ type: "success", title: "User restored" });
-      await loadUsers(params);
+      loadUsers(params);
     } catch (err) {
       pushToast({ type: "error", title: "Restore failed", message: err.message });
     } finally {
@@ -167,12 +216,16 @@ const AdminDashboard = () => {
   };
 
   const openCreate = () => {
+    setSubmitError("");
+    setSubmitInfo("");
     setFormMode("create");
     setSelectedUser(null);
     setFormOpen(true);
   };
 
   const openEdit = (user) => {
+    setSubmitError("");
+    setSubmitInfo("");
     setFormMode("edit");
     setSelectedUser(user);
     setFormOpen(true);
@@ -204,49 +257,82 @@ const AdminDashboard = () => {
     handleRestoreRequest(user._id);
   };
 
+  const handleFormCancel = async () => {
+    setCanceling(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      setSubmitError("");
+      setSubmitInfo("");
+      setFormOpen(false);
+      setNotify({
+        open: true,
+        title: "Cancelled",
+        message: formMode === "create" ? "User creation was cancelled." : "User update was cancelled.",
+      });
+    } finally {
+      setCanceling(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className={`${embedded ? "bg-transparent" : "min-h-screen bg-slate-50"} text-slate-900`}>
       <ToastStack toasts={toasts} />
-      <div className="flex min-h-screen">
-        <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white px-6 py-8 lg:flex">
-          <div className="flex items-center gap-2 text-xl font-semibold text-blue-600">
-            <LayoutGrid size={20} />
-            <span>AquaFlow Admin</span>
-          </div>
-          <nav className="mt-10 space-y-2 text-sm font-medium">
-            <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-blue-700">
-              <Users size={18} />
-              <span>User Management</span>
+      <div className={`flex ${embedded ? "" : "min-h-screen"}`}>
+        {!embedded && (
+          <aside className="hidden w-64 flex-col border-r border-slate-200 bg-white px-6 py-8 lg:flex">
+            <div className="flex items-center gap-2 text-xl font-semibold text-blue-600">
+              <LayoutGrid size={20} />
+              <span>AquaFlow Admin</span>
             </div>
-            <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-slate-500">
-              <LayoutGrid size={18} />
-              <span>Operations</span>
+            <nav className="mt-10 space-y-2 text-sm font-medium">
+              <div className="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-blue-700">
+                <Users size={18} />
+                <span>User Management</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-slate-500">
+                <LayoutGrid size={18} />
+                <span>Operations</span>
+              </div>
+            </nav>
+            <div className="mt-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
+              Secure admin access enabled.
             </div>
-          </nav>
-          <div className="mt-auto rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500">
-            Secure admin access enabled.
-          </div>
-        </aside>
+          </aside>
+        )}
 
         <main className="flex-1">
-          <header className="border-b border-slate-200 bg-white px-6 py-5 lg:px-10">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Admin Console</p>
-                <h1 className="mt-2 text-2xl font-semibold text-slate-900">User Management</h1>
+          {!embedded && (
+            <header className="border-b border-slate-200 bg-white px-6 py-5 lg:px-10">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Admin Console</p>
+                  <h1 className="mt-2 text-2xl font-semibold text-slate-900">User Management</h1>
+                </div>
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                >
+                  <Plus size={16} />
+                  Add User
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-              >
-                <Plus size={16} />
-                Add User
-              </button>
-            </div>
-          </header>
+            </header>
+          )}
 
-          <section className="px-6 py-8 lg:px-10">
+          <section className={`${embedded ? "px-0 py-0" : "px-6 py-8 lg:px-10"}`}>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              {embedded && (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                >
+                  <Plus size={16} />
+                  Add User
+                </button>
+              )}
+            </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
@@ -378,8 +464,20 @@ const AdminDashboard = () => {
         mode={formMode}
         initialData={selectedUser}
         onClose={() => setFormOpen(false)}
+        onCancel={handleFormCancel}
         onSubmit={handleFormSubmit}
+        submitError={submitError}
+        submitInfo={submitInfo}
+        onClearSubmitError={() => setSubmitError("")}
         loading={saving}
+        cancelLoading={canceling}
+      />
+
+      <NotifyModal
+        open={notify.open}
+        title={notify.title}
+        message={notify.message}
+        onClose={() => setNotify({ open: false, title: "", message: "" })}
       />
 
       <ConfirmDialog

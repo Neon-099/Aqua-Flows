@@ -94,7 +94,7 @@ const AdminAuth = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@aquaflow.com"
+                  placeholder="aquaflow.com"
                   className="w-full rounded-lg border-2 border-slate-200 py-3 pl-11 pr-4 text-sm font-medium text-slate-800 focus:border-blue-500 focus:outline-none"
                   required
                 />
@@ -134,7 +134,6 @@ const AdminAuth = () => {
               <Link to="/auth" className="text-blue-600 hover:text-blue-700">
                 Return to customer login
               </Link>
-              <span>Need help? Contact support.</span>
             </div>
           </div>
         </div>
