@@ -20,7 +20,7 @@ const app = express();
 app.set("etag", false);
 
 const isProd = env.NODE_ENV === "production";
-const defaultOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
+const defaultOrigins = (env.CLIENT_URLS || env.CLIENT_URL || '');
 const configuredOrigins = (env.CLIENT_URLS || env.CLIENT_URL || "")
   .split(",")
   .map((o) => o.trim())
