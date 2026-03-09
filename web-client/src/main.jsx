@@ -16,7 +16,7 @@ import StaffMessages from './page/staff/StaffMessages'
 import RiderOrders from './page/RiderOrders'
 import { AuthProvider } from './contexts/AuthProvider'
 import AdminAuth from './page/admin/AdminAuth'
-import AdminDashboard from './page/admin/AdminDashboard'
+import AdminConsole from './page/admin/AdminConsole'
 
 import AdminRoute from './components/admin/AdminRoute'
 import StaffRoute from './components/staff/StaffRoute'
@@ -103,7 +103,7 @@ createRoot(document.getElementById('root')).render(
               path='/admin/dashboard'
               element={(
                 <AdminRoute>
-                  <AdminDashboard />
+                  <AdminConsole />
                 </AdminRoute>
               )}
             />

@@ -3,6 +3,16 @@ import { apiRequest } from "../utils/api";
 
 const AuthContext = createContext();
 
+const normalizeUser = (user) => {
+  if (!user) return null;
+  const resolvedId = user._id || user.id || null;
+  return {
+    ...user,
+    id: resolvedId,
+    _id: resolvedId,
+  };
+};
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -19,7 +29,7 @@ export const AuthProvider = ({ children }) => {
     const checkUser = async () => {
       try {
         const res = await apiRequest("/auth/me", "GET");
-        setUser(res?.user || null);
+        setUser(normalizeUser(res?.user));
       } catch {
         // not authenticated
       } finally {
@@ -33,8 +43,9 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await apiRequest("/auth/signin", "POST", { email, password });
       if (res?.token) localStorage.setItem("authToken", res.token);
-      setUser(res?.user || null);
-      return { success: true, role: res?.user?.role, user: res?.user };
+      const normalized = normalizeUser(res?.user);
+      setUser(normalized);
+      return { success: true, role: normalized?.role, user: normalized };
     } catch (error) {
       if (error?.status === 429) {
         return { success: false, error: "Too many attempts. Please try again later after 15 minutes." };
@@ -47,8 +58,9 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await apiRequest("/auth/signup", "POST", userData);
       if (res?.token) localStorage.setItem("authToken", res.token);
-      setUser(res?.user || null);
-      return { success: true, role: res?.user?.role, user: res?.user };
+      const normalized = normalizeUser(res?.user);
+      setUser(normalized);
+      return { success: true, role: normalized?.role, user: normalized };
     } catch (error) {
       return { success: false, error: error?.message || "Signup failed" };
     }
@@ -65,8 +77,9 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = async (payload) => {
     try {
       const res = await apiRequest("/auth/profile", "PUT", payload);
-      if (res?.user) setUser(res.user);
-      return { success: true, user: res?.user };
+      const normalized = normalizeUser(res?.user);
+      if (normalized) setUser(normalized);
+      return { success: true, user: normalized };
     } catch (error) {
       return { success: false, error: error?.message || "Failed to update profile" };
     }

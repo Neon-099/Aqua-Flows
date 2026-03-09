@@ -55,7 +55,7 @@ const Landing = () => {
       <section className="w-full bg-white py-16 px-12">
         <div className="max-w-6xl mx-auto">
           {/* Location Badge */}
-          <div className="flex justify-center mb-6">
+          <div className="flex justify-center my-6">
             <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-semibold">
               <MapPin size={16} />
               <span>Serving your local area.</span>
@@ -185,7 +185,7 @@ const Landing = () => {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">Smart Notifications</h3>
-                <p className="text-slate-600">Get SMS and in-app updates for every step of your order.</p>
+                <p className="text-slate-600">Get in-app updates for every step of your order.</p>
               </div>
             </div>
 
@@ -279,7 +279,7 @@ const Landing = () => {
             {/* AquaFlow Column */}
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <Droplet fill="currentColor" size={24} className="text-blue-300" />
+                <img src="AQ_LOGO.png" alt="" className='h-8 w-10' />
                 <span className="font-bold text-xl">AquaFlow</span>
               </div>
               <p className="text-blue-200 text-sm leading-relaxed">
@@ -333,7 +333,7 @@ const Landing = () => {
           {/* Copyright */}
           <div className="border-t border-blue-800 pt-8 text-center">
             <p className="text-blue-200 text-sm">
-              © 2025 AquaFlow Water Station. All rights reserved.
+              © 2026 AquaFlow Water Station. All rights reserved.
             </p>
           </div>
         </div>

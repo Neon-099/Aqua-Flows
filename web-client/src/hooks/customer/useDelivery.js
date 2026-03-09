@@ -3,9 +3,7 @@ import { useAuth } from '../../contexts/AuthProvider';
 import { apiRequest } from '../../utils/api';
 import { listConversations } from '../../utils/chatApi';
 import { 
-  ClipboardList, MessageSquare,  Droplet,
   CheckCircle2, Package, RefreshCw, Truck, Home, Clock,
-  CircleDot
 } from 'lucide-react';
 
 import { useNavigate } from 'react-router-dom';
@@ -52,7 +50,11 @@ const sortByRecent = (arr) =>
 const getDisplayEtaText = (order) => {
   if (!order) return ETA_FALLBACK_TEXT;
   const etaText = normalizeNullableText(order.eta_text);
-  return etaText || ETA_FALLBACK_TEXT;
+  if(order.status === 'OUT_FOR_DELIVERY'){
+    return etaText || order?.eta_text
+  } else if (order.status === 'GALLON_PICKUP'){
+    return etaText || order?.etaText
+  }
 };
 
 const getProgressSteps = (status) => {

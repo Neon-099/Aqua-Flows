@@ -406,8 +406,14 @@ const Delivery = () => {
                         </div>
                         <div className="flex justify-between text-slate-400 font-bold text-lg">
                           <span>Delivery fee</span>
-                          <span className="text-slate-800">{money(DELIVERY_FEE)}</span>
+                          <span className="text-slate-800">{money(5)}</span>
                         </div>
+                        {latestSummaryOrder.payment_method === 'GCASH' && (
+                          <div className="flex justify-between text-slate-400 font-bold text-lg">
+                            <span>Vat</span>
+                            <span className="text-slate-800">{money(3)}</span>
+                          </div> 
+                        )}
                         <div className="flex justify-between font-black text-slate-900 text-3xl pt-2">
                           <span>Total</span>
                           <span>{money(total)}</span>

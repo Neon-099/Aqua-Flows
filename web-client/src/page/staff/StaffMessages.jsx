@@ -1,18 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
+  Archive,
   CheckCheck,
   CircleDot,
   Info,
   MessageSquare,
   Search,
   Send,
+  Trash2,
   Droplet,
   ClipboardList,
   UserRound,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthProvider';
-import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen } from '../../utils/chatApi';
+import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen, deleteConversation as deleteConversationApi, deleteMessage as deleteMessageApi } from '../../utils/chatApi';
 import { createChatSocket, emitWithAck } from '../../utils/socket';
 import { formatConversationTime, formatMessageTime } from '../../utils/messagingFormatters';
 import StaffProfileModal from '../../components/staff/StaffProfileModal';
@@ -33,6 +35,9 @@ const mapConversation = (row, myId) => {
   const other = participants.find((p) => p.userId !== myId) || participants[0] || {};
   const role = row.counterpartyRole || other.role || 'user';
   const name = other.name || `${title(role)} ${short(other.userId)}`;
+  const orderCodeRaw = row.orderCode || row.order_code || row.orderId || null;
+  const orderCode = orderCodeRaw ? String(orderCodeRaw) : '';
+  const orderCodeShort = orderCode ? orderCode.slice(-8) : '';
 
   return {
     id: row._id,
@@ -41,13 +46,14 @@ const mapConversation = (row, myId) => {
     preview: row.lastMessage || 'No messages yet',
     time: formatConversationTime(row.lastMessageAt || row.updatedAt || row.createdAt),
     unread: row.unreadCount || 0,
-    orderTag: row.orderId ? `#${String(row.orderId).slice(0, 8)} • Linked` : 'No linked order',
-    orderLine: row.orderId ? `Order #${String(row.orderId).slice(0, 8)}` : 'No linked order',
+    orderTag: orderCodeShort ? `#${orderCodeShort} • Linked` : 'No linked order',
+    orderLine: orderCodeShort ? `Order #${orderCodeShort}` : 'No linked order',
     statusChip: row.orderStatus ? title(row.orderStatus) : 'Linked chat',
     eta: row.orderEta || 'ETA: --',
     lastUpdated: row.lastMessageAt
       ? `Last updated ${formatConversationTime(row.lastMessageAt)}`
       : 'No recent updates',
+    archivedAt: row.archivedAt || null,
   };
 };
 
@@ -63,6 +69,7 @@ const mapMessage = (row, myId) => ({
 
 const StaffMessages = () => {
   const { user } = useAuth();
+  const userId = user?._id || user?.id || null;
   const location = useLocation();
   const token = localStorage.getItem('authToken');
 
@@ -117,7 +124,7 @@ const StaffMessages = () => {
       : 'flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all';
 
   const emitTyping = (isTyping) => {
-    if (!activeConversationId || !socketRef.current?.connected) return;
+    if (!activeConversationId || !socketRef.current?.connected || activeConversation?.archivedAt) return;
     socketRef.current.emit('chat:typing', { conversationId: activeConversationId, isTyping }, () => {});
   };
 
@@ -130,7 +137,7 @@ const StaffMessages = () => {
 
   const handleSend = async () => {
     const message = draft.trim();
-    if (!message || !activeConversationId) return;
+    if (!message || !activeConversationId || activeConversation?.archivedAt) return;
     setDraft('');
     emitTyping(false);
     try {
@@ -138,10 +145,36 @@ const StaffMessages = () => {
         await emitWithAck(socketRef.current, 'chat:message', { conversationId: activeConversationId, message });
       } else {
         const saved = await sendMessageApi(activeConversationId, message);
-        setMessages((prev) => [...prev, mapMessage(saved, user?._id)]);
+        setMessages((prev) => [...prev, mapMessage(saved, userId)]);
       }
     } catch (e) {
       setError(e.message || 'Failed to send message');
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!activeConversationId || !activeConversation?.archivedAt) return;
+    const ok = window.confirm('Delete this archived conversation now? This cannot be undone.');
+    if (!ok) return;
+    try {
+      await deleteConversationApi(activeConversationId);
+      setConversations((prev) => prev.filter((c) => c.id !== activeConversationId));
+      setMessages([]);
+      setActiveConversationId(null);
+    } catch (e) {
+      setError(e.message || 'Failed to delete conversation');
+    }
+  };
+
+  const handleDeleteMessage = async (messageId) => {
+    if (!activeConversationId || !activeConversation?.archivedAt || !messageId) return;
+    const ok = window.confirm('Delete this archived message? This cannot be undone.');
+    if (!ok) return;
+    try {
+      await deleteMessageApi(activeConversationId, messageId);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch (e) {
+      setError(e.message || 'Failed to delete message');
     }
   };
 
@@ -150,12 +183,12 @@ const StaffMessages = () => {
   }, [messages]);
 
   useEffect(() => {
-    if (!user?._id) return;
+    if (!userId) return;
     (async () => {
       setLoadingConversations(true);
       try {
         const rows = await listConversations(50);
-        const mapped = rows.map((row) => mapConversation(row, user._id));
+        const mapped = rows.map((row) => mapConversation(row, userId));
         setConversations(mapped);
         setActiveConversationId((prev) => prev || mapped[0]?.id || null);
       } catch (e) {
@@ -164,31 +197,33 @@ const StaffMessages = () => {
         setLoadingConversations(false);
       }
     })();
-  }, [user?._id]);
+  }, [userId]);
 
   useEffect(() => {
-    if (!activeConversationId || !user?._id) return;
+    if (!activeConversationId || !userId) return;
     (async () => {
       setLoadingMessages(true);
       try {
         const rows = await getMessages(activeConversationId, 100);
-        setMessages(rows.map((row) => mapMessage(row, user._id)));
-        await markSeen(activeConversationId);
-        setConversations((prev) =>
-          prev.map((conversation) =>
-            conversation.id === activeConversationId ? { ...conversation, unread: 0 } : conversation
-          )
-        );
+        setMessages(rows.map((row) => mapMessage(row, userId)));
+        if (!activeConversation?.archivedAt) {
+          await markSeen(activeConversationId);
+          setConversations((prev) =>
+            prev.map((conversation) =>
+              conversation.id === activeConversationId ? { ...conversation, unread: 0 } : conversation
+            )
+          );
+        }
       } catch (e) {
         setError(e.message || 'Failed to load messages');
       } finally {
         setLoadingMessages(false);
       }
     })();
-  }, [activeConversationId, user?._id]);
+  }, [activeConversationId, userId, activeConversation?.archivedAt]);
 
   useEffect(() => {
-    if (!token || !user?._id) return undefined;
+    if (!token || !userId) return undefined;
     const socket = createChatSocket(token);
     const timers = typingTimersRef.current;
     socketRef.current = socket;
@@ -216,7 +251,7 @@ const StaffMessages = () => {
       });
 
       if (incoming.conversationId === activeConversationId) {
-        setMessages((prev) => (prev.some((message) => message.id === incoming._id) ? prev : [...prev, mapMessage(incoming, user._id)]));
+        setMessages((prev) => (prev.some((message) => message.id === incoming._id) ? prev : [...prev, mapMessage(incoming, userId)]));
       }
     });
 
@@ -244,7 +279,7 @@ const StaffMessages = () => {
       Object.values(timers).forEach(clearTimeout);
       socket.disconnect();
     };
-  }, [token, user?._id, activeConversationId]);
+  }, [token, userId, activeConversationId]);
 
   useEffect(() => {
     if (!activeConversationId || !socketRef.current?.connected) return;
@@ -415,6 +450,19 @@ const StaffMessages = () => {
                 </div>
               </div>
             </header>
+            {activeConversation?.archivedAt && (
+              <div className="px-5 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5"><Archive size={14} /> Archived conversation (read-only)</span>
+                <button
+                  type="button"
+                  onClick={handleDeleteConversation}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-300 text-amber-800 bg-white hover:bg-amber-100"
+                >
+                  <Trash2 size={12} />
+                  Delete Conversation
+                </button>
+              </div>
+            )}
 
             <div className="px-4 py-3 border-b border-slate-200 text-center text-slate-400 font-semibold">Today</div>
 
@@ -448,6 +496,15 @@ const StaffMessages = () => {
                         </>
                       )}
                     </p>
+                    {activeConversation?.archivedAt && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMessage(message.id)}
+                        className="text-[11px] text-red-600 hover:text-red-700"
+                      >
+                        Delete message
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -462,6 +519,7 @@ const StaffMessages = () => {
                   <input
                     value={draft}
                     onChange={onDraftChange}
+                    disabled={Boolean(activeConversation?.archivedAt)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' && !event.shiftKey) {
                         event.preventDefault();
@@ -469,14 +527,15 @@ const StaffMessages = () => {
                       }
                     }}
                     type="text"
-                    placeholder="Type a message to your rider..."
-                    className="w-full outline-none text-lg placeholder:text-slate-400"
+                    placeholder={activeConversation?.archivedAt ? 'Archived conversations are read-only.' : 'Type a message to your rider...'}
+                    className="w-full outline-none text-lg placeholder:text-slate-400 disabled:text-slate-400"
                   />
                 </div>
                 <button
                   type="button"
+                  disabled={Boolean(activeConversation?.archivedAt)}
                   onClick={handleSend}
-                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold text-lg"
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold text-lg disabled:bg-slate-300 disabled:hover:bg-slate-300"
                 >
                   <Send size={18} />
                   Send

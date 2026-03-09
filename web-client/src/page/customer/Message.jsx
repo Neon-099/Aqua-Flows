@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Send, Droplet, Smile, Info, CheckCheck, LayoutDashboard, ClipboardList, MessageSquare, MapPin, Archive, Inbox, CircleHelp } from 'lucide-react';
+import { Search, Send, Droplet, Smile, Info, CheckCheck, LayoutDashboard, ClipboardList, MessageSquare, MapPin, Archive, Inbox, CircleHelp, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthProvider';
-import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen } from '../../utils/chatApi';
+import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen, deleteConversation as deleteConversationApi, deleteMessage as deleteMessageApi } from '../../utils/chatApi';
 import { createChatSocket, emitWithAck } from '../../utils/socket';
 import { formatConversationTime, formatMessageTime } from '../../utils/messagingFormatters';
 import { Skeleton, SkeletonGroup } from '../../components/WireframeSkeleton';
@@ -21,13 +21,15 @@ const mapConversation = (row, myId) => {
   const label = row.counterpartyLabel || title(role);
   const counterpartyRole = row.counterpartyRole || role;
   const orderIdRaw = row.orderId ? String(row.orderId) : '';
-  const shortOrderId = orderIdRaw ? orderIdRaw.slice(0, 8) : null;
+  const orderCodeRaw = row.orderCode || row.order_code || null;
+  const normalizedOrderCode = orderCodeRaw ? String(orderCodeRaw) : '';
+  const shortOrderCode = normalizedOrderCode ? normalizedOrderCode.slice(-8) : null;
   return {
     id: row._id,
     name,
     role: label,
     otherRole: counterpartyRole,
-    orderId: shortOrderId ? `#${shortOrderId}` : 'No order',
+    orderCode: shortOrderCode ? `#${shortOrderCode}` : 'No order',
     orderIdRaw,
     lastMsg: row.lastMessage || 'No messages yet',
     time: formatConversationTime(row.lastMessageAt || row.updatedAt || row.createdAt),
@@ -80,6 +82,7 @@ const pickPreferredConversationId = ({ mapped, prevId, userRole, desiredOrderId 
 
 export default function Message() {
   const { user } = useAuth();
+  const userId = user?._id || user?.id || null;
   const location = useLocation();
   const desiredOrderId =
     (location?.state && location.state.orderId && String(location.state.orderId)) ||
@@ -90,6 +93,7 @@ export default function Message() {
   const stopTypingTimerRef = useRef(null);
   const bottomRef = useRef(null);
   const typingTimersRef = useRef({});
+  const lastSeenAtRef = useRef(0);
 
   const [conversations, setConversations] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -120,7 +124,7 @@ export default function Message() {
       }
     }
     if (!q) return base;
-    return base.filter((c) => c.name.toLowerCase().includes(q) || c.orderId.toLowerCase().includes(q) || c.lastMsg.toLowerCase().includes(q));
+    return base.filter((c) => c.name.toLowerCase().includes(q) || c.orderCode.toLowerCase().includes(q) || c.lastMsg.toLowerCase().includes(q));
   }, [conversations, search, activeFilter, user?.role, showArchived]);
 
   useEffect(() => {
@@ -128,12 +132,12 @@ export default function Message() {
   }, [messages]);
 
   useEffect(() => {
-    if (!user?._id) return;
+    if (!userId) return;
     const loadConversations = async (showLoading = false) => {
       if (showLoading) setLoadingConversations(true);
       try {
         const rows = await listConversations(50, { archived: showArchived });
-        const mapped = rows.map((r) => mapConversation(r, user._id));
+        const mapped = rows.map((r) => mapConversation(r, userId));
         setConversations(mapped);
         setSelectedId((prev) =>
           pickPreferredConversationId({
@@ -154,17 +158,15 @@ export default function Message() {
       loadConversations(false);
     }, 10000);
     return () => clearInterval(interval);
-  }, [user?._id, showArchived]);
+  }, [userId, showArchived, desiredOrderId, user?.role]);
 
   useEffect(() => {
-    if (!selectedId || !user?._id) return;
+    if (!selectedId || !userId) return;
     const loadConversationMessages = async (showLoading = false) => {
       if (showLoading) setLoadingMessages(true);
       try {
         const rows = await getMessages(selectedId, 100);
-        setMessages(rows.map((m) => mapMessage(m, user._id)));
-        await markSeen(selectedId);
-        setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, unreadCount: 0 } : c)));
+        setMessages(rows.map((m) => mapMessage(m, userId)));
       } catch (e) {
         setError(e.message || 'Failed to load messages');
       } finally {
@@ -172,14 +174,28 @@ export default function Message() {
       }
     };
     loadConversationMessages(true);
-    const interval = setInterval(() => {
-      loadConversationMessages(false);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [selectedId, user?._id]);
+  }, [selectedId, userId]);
 
   useEffect(() => {
-    if (!token || !user?._id) return undefined;
+    if (!selectedId || selected?.archivedAt) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await markSeen(selectedId);
+        if (cancelled) return;
+        lastSeenAtRef.current = Date.now();
+        setConversations((prev) => prev.map((c) => (c.id === selectedId ? { ...c, unreadCount: 0 } : c)));
+      } catch (_) {
+        // best-effort read marker update
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, selected?.archivedAt]);
+
+  useEffect(() => {
+    if (!token || !userId) return undefined;
     const socket = createChatSocket(token);
     socketRef.current = socket;
     socket.on('connect', () => setConnected(true));
@@ -197,7 +213,15 @@ export default function Message() {
         return [target, ...updated.filter((c) => c.id !== incoming.conversationId)];
       });
       if (incoming.conversationId === selectedId) {
-        setMessages((prev) => (prev.some((m) => m.id === incoming._id) ? prev : [...prev, mapMessage(incoming, user._id)]));
+        setMessages((prev) => (prev.some((m) => m.id === incoming._id) ? prev : [...prev, mapMessage(incoming, userId)]));
+        const shouldMarkSeen =
+          !selected?.archivedAt &&
+          incoming.senderId !== userId &&
+          Date.now() - lastSeenAtRef.current > 2000;
+        if (shouldMarkSeen) {
+          lastSeenAtRef.current = Date.now();
+          markSeen(selectedId).catch(() => {});
+        }
       }
     });
     socket.on('chat:typing', (incoming) => {
@@ -213,7 +237,7 @@ export default function Message() {
       Object.values(typingTimersRef.current).forEach(clearTimeout);
       socket.disconnect();
     };
-  }, [token, user?._id, selectedId]);
+  }, [token, userId, selectedId, selected?.archivedAt]);
 
   useEffect(() => {
     if (!selectedId || !socketRef.current?.connected) return;
@@ -221,7 +245,7 @@ export default function Message() {
   }, [selectedId, connected]);
 
   const emitTyping = (isTyping) => {
-    if (!selectedId || !socketRef.current?.connected) return;
+    if (!selectedId || !socketRef.current?.connected || selected?.archivedAt) return;
     socketRef.current.emit('chat:typing', { conversationId: selectedId, isTyping }, () => {});
   };
 
@@ -242,10 +266,36 @@ export default function Message() {
         await emitWithAck(socketRef.current, 'chat:message', { conversationId: selectedId, message });
       } else {
         const saved = await sendMessageApi(selectedId, message);
-        setMessages((prev) => [...prev, mapMessage(saved, user?._id)]);
+        setMessages((prev) => [...prev, mapMessage(saved, userId)]);
       }
     } catch (e) {
       setError(e.message || 'Failed to send');
+    }
+  };
+
+  const onDeleteConversation = async () => {
+    if (!selectedId || !selected?.archivedAt) return;
+    const ok = window.confirm('Delete this archived conversation now? This cannot be undone.');
+    if (!ok) return;
+    try {
+      await deleteConversationApi(selectedId);
+      setConversations((prev) => prev.filter((c) => c.id !== selectedId));
+      setMessages([]);
+      setSelectedId(null);
+    } catch (e) {
+      setError(e.message || 'Failed to delete conversation');
+    }
+  };
+
+  const onDeleteMessage = async (messageId) => {
+    if (!selectedId || !selected?.archivedAt || !messageId) return;
+    const ok = window.confirm('Delete this archived message? This cannot be undone.');
+    if (!ok) return;
+    try {
+      await deleteMessageApi(selectedId, messageId);
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch (e) {
+      setError(e.message || 'Failed to delete message');
     }
   };
 
@@ -379,7 +429,7 @@ export default function Message() {
                   </div>
                   <p className="text-xs text-slate-500 mt-2 line-clamp-1">"{chat.lastMsg}"</p>
                   <p className="text-[10px] text-slate-400 uppercase font-bold mt-1">
-                    {chat.orderId} • {chat.status}
+                    {chat.orderCode} • {chat.status}
                     {chat.isRiderConversation && chat.isRiderAssigned ? ' • ASSIGNED TO YOUR ORDER' : ''}
                     {chat.archivedAt ? ' • ARCHIVED' : ''}
                   </p>
@@ -399,7 +449,7 @@ export default function Message() {
                   <div>
                     <h3 className="font-bold text-slate-800 text-lg">{selected.name} • {selected.role}</h3>
                     <p className="text-xs text-slate-400">
-                      Order {selected.orderId}
+                      Order {selected.orderCode}
                       {selected.isRiderConversation && selected.isRiderAssigned ? ' • Assigned rider' : ''}
                     </p>
                   </div>
@@ -407,14 +457,22 @@ export default function Message() {
                 <span className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-[11px] font-extrabold uppercase">{selected.status}</span>
               </div>
               {selected.archivedAt && (
-                <div className="px-8 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-t border-amber-100">
+                <div className="px-8 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-t border-amber-100 flex items-center justify-between gap-3">
                   <span className="inline-flex items-center gap-1.5"><Archive size={14} /> Archived conversation</span>
+                  <button
+                    type="button"
+                    onClick={onDeleteConversation}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-amber-300 text-amber-800 bg-white hover:bg-amber-100"
+                  >
+                    <Trash2 size={12} />
+                    Delete Conversation
+                  </button>
                 </div>
               )}
 
               <div className="flex-1 overflow-y-auto px-10 py-6 space-y-4">
                 <div className="bg-blue-50/50 text-blue-600 p-3 rounded-xl text-xs font-bold border border-blue-100 flex items-center gap-2">
-                  <Info size={16} /> Messages are linked to {selected.orderId}.
+                  <Info size={16} /> Messages are linked to {selected.orderCode}.
                 </div>
                 {loadingMessages && (
                   <div className="space-y-3">
@@ -433,6 +491,15 @@ export default function Message() {
                       {formatMessageTime(m.timestamp)}
                       {m.mine && <><CheckCheck size={12} className={m.seenAt ? 'text-blue-500' : 'text-slate-300'} />{m.seenAt ? 'Read' : 'Sent'}</>}
                     </div>
+                    {selected.archivedAt && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteMessage(m.id)}
+                        className="text-[11px] text-red-600 hover:text-red-700"
+                      >
+                        Delete message
+                      </button>
+                    )}
                   </div>
                 ))}
                 {typingMap[selectedId] && <p className="text-xs text-slate-400 italic">Typing...</p>}

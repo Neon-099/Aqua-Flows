@@ -10,7 +10,7 @@ const resolveSocketUrl = () => {
   const apiBase = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
   if (apiBase) return apiBase;
 
-  if (import.meta.env.DEV) return window.location.origin;
+  if (import.meta.env.DEV) return "http://localhost:5500";
 
   throw new Error("Missing VITE_SOCKET_URL (or VITE_API_BASE_URL) in production");
 };

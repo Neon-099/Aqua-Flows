@@ -24,3 +24,13 @@ export const markSeen = async (conversationId) => {
   const res = await apiRequest(`/chat/conversations/${conversationId}/seen`, 'POST');
   return res?.data;
 };
+
+export const deleteConversation = async (conversationId) => {
+  const res = await apiRequest(`/chat/conversations/${conversationId}`, 'DELETE');
+  return res?.data;
+};
+
+export const deleteMessage = async (conversationId, messageId) => {
+  const res = await apiRequest(`/chat/conversations/${conversationId}/messages/${messageId}`, 'DELETE');
+  return res?.data;
+};
