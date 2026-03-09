@@ -3,7 +3,14 @@ import { USER_ROLE } from '../constants/order.constants.js';
 const allowedRoles = new Set(Object.values(USER_ROLE));
 
 export const validateCreateUser = (req, res, next) => {
-  const { email, password, name, address, phone, role, maxCapacityGallons } = req.body;
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const password = String(req.body?.password || '');
+  const name = String(req.body?.name || '').trim();
+  const role = String(req.body?.role || '').trim().toLowerCase();
+  const address = req.body?.address;
+  const phone = req.body?.phone;
+  const maxCapacityGallons = req.body?.maxCapacityGallons;
+
   if (!email || !password || !name || !role) {
     return res.status(400).json({
       success: false,
@@ -43,11 +50,21 @@ export const validateCreateUser = (req, res, next) => {
       });
     }
   }
+  req.body.email = email;
+  req.body.name = name;
+  req.body.role = role;
   next();
 };
 
 export const validateUpdateUser = (req, res, next) => {
-  const { email, name, address, phone, role, password, maxCapacityGallons } = req.body;
+  const email = req.body?.email !== undefined ? String(req.body.email).trim().toLowerCase() : undefined;
+  const name = req.body?.name !== undefined ? String(req.body.name).trim() : undefined;
+  const address = req.body?.address;
+  const phone = req.body?.phone;
+  const role = req.body?.role !== undefined ? String(req.body.role).trim().toLowerCase() : undefined;
+  const password = req.body?.password;
+  const maxCapacityGallons = req.body?.maxCapacityGallons;
+
   if (!email && !name && !address && !phone && !role && !password && maxCapacityGallons === undefined) {
     return res.status(400).json({ success: false, message: 'No fields to update' });
   }
@@ -77,5 +94,8 @@ export const validateUpdateUser = (req, res, next) => {
       });
     }
   }
+  if (email !== undefined) req.body.email = email;
+  if (name !== undefined) req.body.name = name;
+  if (role !== undefined) req.body.role = role;
   next();
 };

@@ -2,6 +2,8 @@ import express from 'express';
 import {
   createOrder,
   createGcashPreparation,
+  retryPayment,
+  switchToCod,
   getOrderById,
   listOrdersForRider,
   cancelOrder,
@@ -26,6 +28,8 @@ const router = express.Router();
 
 router.post('/', protect, createOrder);
 router.post('/gcash_prepare', protect, authorize('customer'), createGcashPreparation);
+router.post('/:id/retry-payment', protect, authorize('customer'), retryPayment);
+router.post('/:id/switch-to-cod', protect, authorize('customer'), switchToCod);
 router.get('/', protect, listOrdersForRider);
 router.get('/:id', protect, getOrderById);
 

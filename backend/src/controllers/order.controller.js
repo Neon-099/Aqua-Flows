@@ -29,6 +29,31 @@ export const createGcashPreparation = async (req, res, next) => {
   }
 };
 
+export const retryPayment = async (req, res, next) => {
+  try {
+    const result = await orderService.retryOrderPayment({
+      user: req.user,
+      orderId: req.params.id,
+      payload: req.body,
+    });
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const switchToCod = async (req, res, next) => {
+  try {
+    const result = await orderService.switchOrderToCod({
+      user: req.user,
+      orderId: req.params.id,
+    });
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
 const emitOrderUpdate = (req, order, extra = {}) => {
   const io = req.app.get('io');
   if (!io || !order?._id) return;

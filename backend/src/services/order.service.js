@@ -386,6 +386,100 @@ export const createGcashPreparation = async ({ user, payload }) => {
   };
 };
 
+const requireOwnedCustomerOrder = async ({ user, orderId }) => {
+  if (user.role !== USER_ROLE.CUSTOMER && user.role !== USER_ROLE.USER) {
+    throwError(403, 'Only customers can manage this order payment');
+  }
+  const customer = await Customer.findOne({ user_id: user._id }).select('_id');
+  if (!customer) throwError(404, 'Customer not found');
+  const order = await Order.findById(orderId);
+  if (!order) throwError(404, 'Order not found');
+  if (order.customer_id !== customer._id) throwError(403, 'Not authorized for this order');
+  return order;
+};
+
+export const retryOrderPayment = async ({ user, orderId, payload }) => {
+  const order = await requireOwnedCustomerOrder({ user, orderId });
+  if (env.FLAG_CUSTOMER_RETRY_PAYMENT === 'false') {
+    throwError(403, 'Retry payment feature is disabled');
+  }
+  if (order.payment_method !== PAYMENT_METHOD.GCASH) {
+    throwError(400, 'Retry payment is only available for GCASH orders');
+  }
+  if ([ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED].includes(order.status)) {
+    throwError(400, 'Cannot retry payment for completed or cancelled orders');
+  }
+
+  const prepare = await createGcashPreparation({
+    user,
+    payload: {
+      water_quantity: order.water_quantity,
+      total_amount: order.total_amount,
+      payment_method: PAYMENT_METHOD.GCASH,
+      gallon_type: order.gallon_type,
+      payment_channel: payload?.payment_channel || 'gcash',
+    },
+  });
+
+  let payment = await Payment.findOne({ order_id: order._id }).sort({ created_at: -1 });
+  if (!payment) {
+    payment = await Payment.create({
+      order_id: order._id,
+      method: PAYMENT_METHOD.GCASH,
+      status: PAYMENT_STATUS.PENDING,
+      amount: order.total_amount,
+      currency: 'PHP',
+      paymongo_payment_intent_id: prepare.payment_intent_id,
+    });
+  } else {
+    payment.method = PAYMENT_METHOD.GCASH;
+    payment.status = PAYMENT_STATUS.PENDING;
+    payment.paymongo_payment_intent_id = prepare.payment_intent_id;
+    await payment.save();
+  }
+
+  order.payment_status = ORDER_PAYMENT_STATUS.PENDING;
+  if (order.status === ORDER_STATUS.DELIVERED) {
+    order.status = ORDER_STATUS.PENDING_PAYMENT;
+  }
+  await order.save();
+
+  return {
+    order,
+    payment,
+    checkout: prepare,
+  };
+};
+
+export const switchOrderToCod = async ({ user, orderId }) => {
+  const order = await requireOwnedCustomerOrder({ user, orderId });
+  if (env.FLAG_CUSTOMER_SWITCH_TO_COD === 'false') {
+    throwError(403, 'Switch to COD feature is disabled');
+  }
+  if ([ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED].includes(order.status)) {
+    throwError(400, 'Cannot switch payment method for completed or cancelled orders');
+  }
+
+  const previousMethod = order.payment_method;
+  order.payment_method = PAYMENT_METHOD.COD;
+  order.payment_status = ORDER_PAYMENT_STATUS.UNPAID;
+  if (order.status === ORDER_STATUS.DELIVERED || order.status === ORDER_STATUS.PENDING_PAYMENT) {
+    order.status = ORDER_STATUS.PENDING_PAYMENT;
+  }
+  await order.save();
+
+  await Payment.updateMany(
+    { order_id: order._id, method: PAYMENT_METHOD.GCASH, status: { $in: [PAYMENT_STATUS.PENDING, PAYMENT_STATUS.PROCESSING] } },
+    { $set: { status: PAYMENT_STATUS.FAILED } }
+  );
+
+  return {
+    order,
+    previous_method: previousMethod,
+    next_method: PAYMENT_METHOD.COD,
+  };
+};
+
 export const getOrderById = async ({ user, orderId }) => {
   const order = await Order.findById(orderId);
   if (!order) throwError(404, 'Order not found');
@@ -1269,6 +1363,33 @@ export const confirmPaymentAndComplete = async ({ user, orderId, source }) => {
     }
 
     await order.save({ session });
+
+    // Ensure COD confirmations are represented in payment records for admin analytics.
+    if (source === 'COD' || order.payment_method === PAYMENT_METHOD.COD) {
+      const existingPayment = await Payment.findOne({ order_id: order._id }).session(session);
+      if (existingPayment) {
+        existingPayment.method = PAYMENT_METHOD.COD;
+        existingPayment.status = PAYMENT_STATUS.PAID;
+        existingPayment.amount = Number(order.total_amount || existingPayment.amount || 0);
+        existingPayment.currency = existingPayment.currency || 'PHP';
+        existingPayment.paid_at = new Date();
+        await existingPayment.save({ session });
+      } else {
+        await Payment.create(
+          [
+            {
+              order_id: order._id,
+              method: PAYMENT_METHOD.COD,
+              status: PAYMENT_STATUS.PAID,
+              amount: Number(order.total_amount || 0),
+              currency: 'PHP',
+              paid_at: new Date(),
+            },
+          ],
+          { session }
+        );
+      }
+    }
 
     await session.commitTransaction();
     return order;

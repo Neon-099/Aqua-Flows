@@ -18,6 +18,7 @@ import { env } from './config/env.js';
 
 
 const app = express();
+app.set('etag', false);
 
 const isProd = env.NODE_ENV === 'production';
 const defaultOrigins = (env.CLIENT_URLS || env.CLIENT_URL || '')

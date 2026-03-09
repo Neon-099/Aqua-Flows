@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
     lowercase: true,
     trim: true,
     match: [
-      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
       'Please provide a valid email',
     ],
   },
@@ -143,6 +143,7 @@ userSchema.pre('save', async function () {
 });
 
 userSchema.post('save', async function (doc) {
+  if (doc?.$locals?.skipRoleSync) return;
   await ensureRoleDocument(doc);
   await cleanupRoleDocuments(doc, doc.$locals?.previousRole);
 });
@@ -160,6 +161,7 @@ userSchema.pre('findOneAndUpdate', async function () {
 });
 
 userSchema.post('findOneAndUpdate', async function (doc) {
+  if (this?.$locals?.skipRoleSync) return;
   if (!this.$locals.shouldSyncRole) return;
   let updatedDoc = doc;
   if (!updatedDoc || this.getOptions()?.new === false) {

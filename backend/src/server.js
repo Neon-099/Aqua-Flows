@@ -9,6 +9,7 @@ import { createSocketServer } from './middlewares/index.js'
 import { autoAcceptPendingOrders } from './services/order.service.js'
 import { startTaskWorker } from './utils/taskQueue.js'
 import { confirmOrder, assignRider, queueDispatch, dispatchOrder, riderStartDelivery, riderPickup } from './services/order.service.js';
+import { runChatArchiveMaintenance } from './services/chat.service.js';
 
 connectDB();
 initFirebaseAdmin();
@@ -21,6 +22,8 @@ app.set('io', io);
 
 const AUTO_ACCEPT_INTERVAL_MS = 15000;
 let autoAcceptRunning = false;
+const CHAT_ARCHIVE_MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
+let chatArchiveMaintenanceRunning = false;
 
 //AUTO ACCEPT ORDER
 const runAutoAcceptTick = async () => {
@@ -40,11 +43,25 @@ const runAutoAcceptTick = async () => {
   }
 };
 
+const runChatArchiveMaintenanceTick = async () => {
+  if (chatArchiveMaintenanceRunning) return;
+  chatArchiveMaintenanceRunning = true;
+  try {
+    await runChatArchiveMaintenance();
+  } catch (err) {
+    console.error(`[CHAT_ARCHIVE] Tick failed: ${err.message}`);
+  } finally {
+    chatArchiveMaintenanceRunning = false;
+  }
+};
+
 httpServer.listen(PORT,() => {
   console.log(`Server running in ${env.NODE_ENV} mode on port ${PORT}`)
   //IT RUN ONCE IMMEDIATELY: THEN KEEP SCANNING PENDING ORDERS EVERY 15S
   runAutoAcceptTick();
   setInterval(runAutoAcceptTick, AUTO_ACCEPT_INTERVAL_MS);
+  runChatArchiveMaintenanceTick();
+  setInterval(runChatArchiveMaintenanceTick, CHAT_ARCHIVE_MAINTENANCE_INTERVAL_MS);
 
   //APPLY TASK WORKER
   startTaskWorker( {

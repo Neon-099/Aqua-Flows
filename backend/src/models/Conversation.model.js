@@ -32,6 +32,7 @@ const conversationSchema = new mongoose.Schema(
 );
 
 conversationSchema.index({ participantsHash: 1, orderId: 1 }, { unique: true });
+conversationSchema.index({ 'participants.userId': 1, archivedAt: 1, lastMessageAt: -1, updatedAt: -1 });
 
 conversationSchema.pre('validate', function preValidate() {
   if (Array.isArray(this.participants) && this.participants.length === 2) {

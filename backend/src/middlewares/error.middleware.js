@@ -6,9 +6,14 @@ export const errorHandler = (err, req, res, next) => {
   console.error(err);
 
   if (err.code === 11000) {
-    const message = 'Duplicate field value entered';
+    const duplicateKeys = Object.keys(err?.keyValue || {});
+    const duplicateField = duplicateKeys[0];
+    const duplicateValue = duplicateField ? err?.keyValue?.[duplicateField] : undefined;
+    const message = duplicateField
+      ? `${duplicateField} '${duplicateValue}' already exists`
+      : 'Duplicate field value entered';
     error = new Error(message);
-    error.statusCode = 400;
+    error.statusCode = 409;
   }
 
   if (err.name === 'ValidationError') {

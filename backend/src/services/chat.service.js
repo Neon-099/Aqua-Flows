@@ -53,19 +53,7 @@ export const getOrCreateConversation = async ({ senderUser, receiverId, orderId 
 };
 
 export const listConversationsForUser = async ({ userId, limit = 20, includeArchived = false }) => {
-  const me = await User.findById(userId);
-  debugChat('listConversationsForUser:start', { userId, role: me?.role, limit, includeArchived });
-  if (me) {
-    try {
-      await bootstrapDefaultConversationsForUser(me);
-      await archiveFinishedOrderConversations();
-      await purgeExpiredArchivedConversations();
-      debugChat('bootstrap:done', { userId, role: me.role });
-    } catch (_) {
-      // Keep conversation listing available even if bootstrap hits stale references.
-      debugChat('bootstrap:error', { userId, role: me.role, error: _?.message || 'unknown' });
-    }
-  }
+  debugChat('listConversationsForUser:start', { userId, limit, includeArchived });
 
   const query = { 'participants.userId': userId };
   if (!includeArchived) query.archivedAt = null;
@@ -120,6 +108,9 @@ export const sendMessage = async ({ senderUser, conversationId, receiverId, orde
     receiverUser = created.receiverUser;
   }
 
+  // Strict read-only rule for archived conversations in all send paths.
+  if (conversation.archivedAt) throwError(410, 'Conversation is archived');
+
   const saved = await Message.create({
     conversationId: conversation._id,
     senderId: senderUser._id,
@@ -141,6 +132,7 @@ export const sendMessage = async ({ senderUser, conversationId, receiverId, orde
 export const markConversationSeen = async ({ conversationId, userId }) => {
   const conversation = await Conversation.findById(conversationId);
   if (!conversation) throwError(404, 'Conversation not found');
+  if (conversation.archivedAt) throwError(410, 'Conversation is archived');
   assertUserInConversation(conversation, userId);
 
   const now = new Date();
@@ -157,6 +149,39 @@ export const markConversationSeen = async ({ conversationId, userId }) => {
   );
 
   return { conversationId, seenAt: now };
+};
+
+export const deleteArchivedConversation = async ({ conversationId, userId }) => {
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) throwError(404, 'Conversation not found');
+  assertUserInConversation(conversation, userId);
+  if (!conversation.archivedAt) throwError(409, 'Conversation is not archived');
+
+  const deletedMessages = await Message.deleteMany({ conversationId });
+  await Conversation.deleteOne({ _id: conversationId });
+
+  return {
+    conversationId,
+    deletedMessages: deletedMessages?.deletedCount || 0,
+  };
+};
+
+export const deleteArchivedMessage = async ({ conversationId, messageId, userId }) => {
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) throwError(404, 'Conversation not found');
+  assertUserInConversation(conversation, userId);
+  if (!conversation.archivedAt) throwError(409, 'Conversation is not archived');
+
+  const message = await Message.findOne({ _id: messageId, conversationId });
+  if (!message) throwError(404, 'Message not found');
+
+  await Message.deleteOne({ _id: messageId, conversationId });
+  return { conversationId, messageId };
+};
+
+export const runChatArchiveMaintenance = async () => {
+  await archiveFinishedOrderConversations();
+  await purgeExpiredArchivedConversations();
 };
 
 const bootstrapDefaultConversationsForUser = async (user) => {
@@ -383,7 +408,7 @@ const enrichConversationsForUser = async ({ userId, conversations }) => {
 
   const [users, orders] = await Promise.all([
     User.find({ _id: { $in: Array.from(participantIds) } }).select('_id name role'),
-    Order.find({ _id: { $in: Array.from(orderIds) } }).select('_id status assigned_rider_id'),
+    Order.find({ _id: { $in: Array.from(orderIds) } }).select('_id order_code status assigned_rider_id'),
   ]);
 
   const userById = new Map(users.map((u) => [u._id, u]));
@@ -420,6 +445,8 @@ const enrichConversationsForUser = async ({ userId, conversations }) => {
     const withMeta = row.toObject();
     withMeta.participants = participants;
     withMeta.unreadCount = unreadCount;
+    withMeta.orderCode = order?.order_code || null;
+    withMeta.order_code = order?.order_code || null;
     withMeta.orderStatus = order?.status || null;
     withMeta.isRiderAssigned = Boolean(order?.assigned_rider_id);
     withMeta.counterpartyRole = otherRole;

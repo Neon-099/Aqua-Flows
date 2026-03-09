@@ -1,9 +1,7 @@
-// e:\Aquaflow\backend\src\config\env.js
-
+// backend/src/config/env.js
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,9 +43,24 @@ export const env = {
   CLIENT_URL: process.env.CLIENT_URL,
   CLIENT_URLS: process.env.CLIENT_URLS,
   ALLOW_NO_ORIGIN: process.env.ALLOW_NO_ORIGIN,
+
+  // Socket tuning
+  SOCKET_PER_MESSAGE_DEFLATE: process.env.SOCKET_PER_MESSAGE_DEFLATE || 'false',
+  SOCKET_PING_INTERVAL_MS: process.env.SOCKET_PING_INTERVAL_MS || '20000',
+  SOCKET_PING_TIMEOUT_MS: process.env.SOCKET_PING_TIMEOUT_MS || '10000',
+
   FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID,
   FIREBASE_CLIENT_EMAIL: process.env.FIREBASE_CLIENT_EMAIL,
   FIREBASE_PRIVATE_KEY: process.env.FIREBASE_PRIVATE_KEY
     ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-    : undefined
+    : undefined,
+
+  ADMIN_DASHBOARD_TZ_DEFAULT: process.env.ADMIN_DASHBOARD_TZ_DEFAULT || 'Asia/Manila',
+  ADMIN_DASHBOARD_TZ_ALT: process.env.ADMIN_DASHBOARD_TZ_ALT || 'Asia/Singapore',
+  ADMIN_PENDING_SLA_MINUTES: process.env.ADMIN_PENDING_SLA_MINUTES || '30',
+  FLAG_ADMIN_OPS_OVERVIEW: process.env.FLAG_ADMIN_OPS_OVERVIEW || 'true',
+  FLAG_ADMIN_PAYMENT_EXCEPTIONS: process.env.FLAG_ADMIN_PAYMENT_EXCEPTIONS || 'true',
+  FLAG_ADMIN_MANUAL_RESOLUTION: process.env.FLAG_ADMIN_MANUAL_RESOLUTION || 'true',
+  FLAG_CUSTOMER_RETRY_PAYMENT: process.env.FLAG_CUSTOMER_RETRY_PAYMENT || 'true',
+  FLAG_CUSTOMER_SWITCH_TO_COD: process.env.FLAG_CUSTOMER_SWITCH_TO_COD || 'true',
 };

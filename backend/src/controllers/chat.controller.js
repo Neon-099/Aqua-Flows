@@ -68,3 +68,28 @@ export const markSeen = async (req, res, next) => {
     next(err);
   }
 };
+
+export const deleteConversation = async (req, res, next) => {
+  try {
+    const result = await chatService.deleteArchivedConversation({
+      conversationId: req.params.conversationId,
+      userId: req.user._id,
+    });
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const deleteMessage = async (req, res, next) => {
+  try {
+    const result = await chatService.deleteArchivedMessage({
+      conversationId: req.params.conversationId,
+      messageId: req.params.messageId,
+      userId: req.user._id,
+    });
+    res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+};
