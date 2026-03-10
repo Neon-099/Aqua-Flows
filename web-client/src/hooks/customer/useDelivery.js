@@ -3,7 +3,7 @@ import { useAuth } from '../../contexts/AuthProvider';
 import { apiRequest } from '../../utils/api';
 import { listConversations } from '../../utils/chatApi';
 import { 
-  CheckCircle2, Package, RefreshCw, Truck, Home, Clock,
+  CheckCircle2, Package, RefreshCw, Truck, Home, Clock, Timer
 } from 'lucide-react';
 
 import { useNavigate } from 'react-router-dom';
@@ -28,7 +28,6 @@ const STATUS_LABEL = {
   CONFIRMED: 'Accepted',
   PICKED_UP: 'In Process',
   OUT_FOR_DELIVERY: 'Out for Delivery',
-  DELIVERED: 'Delivered',
   PENDING_PAYMENT: 'Pending Payment',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
@@ -59,6 +58,13 @@ const getDisplayEtaText = (order) => {
 
 const getProgressSteps = (status) => {
   const steps = [
+     {
+      label: 'Pending',
+      icon: Timer,
+      activeClasses: 'from-sky-200 to-sky-400 ring-sky-100',
+      textActiveClass: 'text-sky-600',
+      progressClass: 'bg-sky-300',
+    },
     {
       label: 'Confirmed',
       icon: CheckCircle2,
@@ -88,13 +94,6 @@ const getProgressSteps = (status) => {
       progressClass: 'bg-amber-500',
     },
     {
-      label: 'Delivered',
-      icon: Home,
-      activeClasses: 'from-cyan-500 to-cyan-600 ring-cyan-200',
-      textActiveClass: 'text-cyan-600',
-      progressClass: 'bg-cyan-500',
-    },
-    {
       label: 'Pending Payment',
       icon: Clock,
       activeClasses: 'from-rose-500 to-rose-600 ring-rose-200',
@@ -111,10 +110,10 @@ const getProgressSteps = (status) => {
   ];
 
   const currentIndex = (() => {
-    if (status === 'CONFIRMED') return 0;
-    if (status === 'PICKED_UP') return 1;
+    if(status === 'PENDING') return 0
+    if (status === 'CONFIRMED') return 1;
+    if (status === 'PICKED_UP') return 2;
     if (status === 'OUT_FOR_DELIVERY') return 3;
-    if (status === 'DELIVERED') return 4;
     if (status === 'PENDING_PAYMENT') return 5;
     if (status === 'COMPLETED') return 6;
     return 0;

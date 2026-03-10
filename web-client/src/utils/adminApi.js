@@ -28,6 +28,10 @@ export const restoreAdminUser = async (id) => {
   return apiRequest(`/admin/users/${id}/restore`, "PATCH");
 };
 
+export const deleteAdminUser = async (id) => {
+  return apiRequest(`/admin/users/${id}`, "DELETE");
+};
+
 export const fetchAdminConfig = async () => {
   return apiRequest("/admin/config");
 };

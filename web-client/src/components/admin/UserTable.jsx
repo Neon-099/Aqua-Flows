@@ -9,7 +9,7 @@ const columns = [
   { key: "createdAt", label: "Created" },
 ];
 
-const UserTable = ({ users, onEdit, onArchive, onRestore, onSort, sortBy, sortOrder, archivedView }) => {
+const UserTable = ({ users, onEdit, onArchive, onRestore, onDelete, onSort, sortBy, sortOrder, archivedView }) => {
   const renderSortIcon = (key) => {
     if (sortBy !== key) return null;
     return sortOrder === "asc" ? (
@@ -62,20 +62,31 @@ const UserTable = ({ users, onEdit, onArchive, onRestore, onSort, sortBy, sortOr
                   <button
                     type="button"
                     onClick={() => onEdit(user)}
+                    disabled={archivedView}
                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                   >
                     <Edit3 size={14} />
                     Edit
                   </button>
                   {archivedView ? (
-                    <button
-                      type="button"
-                      onClick={() => onRestore(user)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
-                    >
-                      <RotateCcw size={14} />
-                      Restore
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onRestore(user)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                      >
+                        <RotateCcw size={14} />
+                        Restore
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(user)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        <Trash2 size={14} />
+                        Delete
+                      </button>
+                    </>
                   ) : (
                     <button
                       type="button"

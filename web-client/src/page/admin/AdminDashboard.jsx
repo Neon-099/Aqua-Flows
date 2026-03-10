@@ -8,6 +8,7 @@ import UserTable from "../../components/admin/UserTable";
 import {
   archiveAdminUser,
   createAdminUser,
+  deleteAdminUser,
   fetchAdminUsers,
   restoreAdminUser,
   updateAdminUser,
@@ -35,6 +36,9 @@ const AdminDashboard = ({ embedded = false }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingArchive, setPendingArchive] = useState(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [toasts, setToasts] = useState([]);
   const [data, setData] = useState({ items: [], pages: 1 });
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +48,7 @@ const AdminDashboard = ({ embedded = false }) => {
   const [canceling, setCanceling] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [notify, setNotify] = useState({ open: false, title: "", message: "" });
   const [submitError, setSubmitError] = useState("");
   const [submitInfo, setSubmitInfo] = useState("");
@@ -200,6 +205,21 @@ const AdminDashboard = ({ embedded = false }) => {
     }
   };
 
+  const handleDeleteRequest = async (id) => {
+    setDeleting(true);
+    try {
+      await deleteAdminUser(id);
+      pushToast({ type: "success", title: "User deleted" });
+      setDeleteOpen(false);
+      setPendingDelete(null);
+      loadUsers(params);
+    } catch (err) {
+      pushToast({ type: "error", title: "Delete failed", message: err.message });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const emptyStateTitle = useMemo(() => {
     if (activeTab === "archived") return "No archived users yet.";
     if (search.trim()) return "No results match your search.";
@@ -255,6 +275,17 @@ const AdminDashboard = ({ embedded = false }) => {
 
   const handleRestore = (user) => {
     handleRestoreRequest(user._id);
+  };
+
+  const handleDelete = (user) => {
+    setPendingDelete(user);
+    setDeleteConfirmText("");
+    setDeleteOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!pendingDelete) return;
+    handleDeleteRequest(pendingDelete._id);
   };
 
   const handleFormCancel = async () => {
@@ -412,6 +443,7 @@ const AdminDashboard = ({ embedded = false }) => {
                     onEdit={openEdit}
                     onArchive={handleArchive}
                     onRestore={handleRestore}
+                    onDelete={handleDelete}
                     onSort={handleSort}
                     sortBy={sortBy}
                     sortOrder={sortOrder}
@@ -491,6 +523,23 @@ const AdminDashboard = ({ embedded = false }) => {
           setPendingArchive(null);
         }}
         loading={archiving}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete user permanently?"
+        message={`This will permanently delete ${pendingDelete?.name || "this user"} and all related orders and messages. Type DELETE to continue.`}
+        confirmText="Delete"
+        onConfirm={handleConfirmDelete}
+        requireText="DELETE"
+        inputValue={deleteConfirmText}
+        onInputChange={setDeleteConfirmText}
+        onClose={() => {
+          setDeleteOpen(false);
+          setPendingDelete(null);
+          setDeleteConfirmText("");
+        }}
+        loading={deleting}
       />
     </div>
   );

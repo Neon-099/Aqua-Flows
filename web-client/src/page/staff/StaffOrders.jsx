@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthProvider';
 import CancelOrder from '../../components/CancelOrder';
 import useStaffOrders from './useStaffOrders';
 import StaffProfileModal from '../../components/staff/StaffProfileModal';
+import StaffNotificationBell from '../../components/staff/StaffNotificationBell';
 import { useState } from 'react';
 
 
@@ -100,21 +101,24 @@ const StaffOrders = () => {
           </Link>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setProfileModalOpen(true)}
-          className="flex items-center gap-4 rounded-xl px-2 py-1 hover:bg-slate-100 transition-colors"
-        >
-          <div className="text-right">
-            <p className="text-sm font-black text-slate-900 leading-none">{user?.name}</p>
-            <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">
-              Staff Operator
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold">
-            {user?.name ? user.name.slice(0, 2).toUpperCase() : "ST"}
-          </div>
-        </button>
+        <div className="flex items-center gap-3">
+          <StaffNotificationBell userId={user?._id || user?.id} />
+          <button
+            type="button"
+            onClick={() => setProfileModalOpen(true)}
+            className="flex items-center gap-4 rounded-xl px-2 py-1 hover:bg-slate-100 transition-colors"
+          >
+            <div className="text-right">
+              <p className="text-sm font-black text-slate-900 leading-none">{user?.name}</p>
+              <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">
+                Staff Operator
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold">
+              {user?.name ? user.name.slice(0, 2).toUpperCase() : "ST"}
+            </div>
+          </button>
+        </div>
       </nav>
 
       {/* Main Content */}

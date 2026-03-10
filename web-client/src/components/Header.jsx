@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -8,6 +8,7 @@ import {
   User,
   Bell,
 } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 import { useAuth } from '../contexts/AuthProvider';
 import { apiRequest } from '../utils/api';
@@ -21,10 +22,35 @@ const NAV_ITEMS = [
   { to: '/profile', label: 'Profile', icon: User },
 ];
 
+const TOASTED_NOTIFICATION_IDS_KEY = 'customerToastedNotificationIds';
+const MAX_TOASTED_NOTIFICATION_IDS = 200;
+
+const getToastedNotificationIds = () => {
+  try {
+    const raw = sessionStorage.getItem(TOASTED_NOTIFICATION_IDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const setToastedNotificationIds = (ids) => {
+  try {
+    sessionStorage.setItem(
+      TOASTED_NOTIFICATION_IDS_KEY,
+      JSON.stringify(ids.slice(-MAX_TOASTED_NOTIFICATION_IDS))
+    );
+  } catch {
+    // silent
+  }
+};
+
 const Header = ({ name }) => {
   const { user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationModal, setNotificationModal] = useState(false);
+  const toastedNotificationIdsRef = useRef(new Set(getToastedNotificationIds()));
   const userId = user?._id || user?.id;
 
   const profileName = user?.name || 'Customer';
@@ -53,9 +79,45 @@ const Header = ({ name }) => {
 
     const fetchUnread = async () => {
       try {
-        const res = await apiRequest('/notifications/orders/unread-count');
-        const count = res?.data?.count ?? 0;
+        const [countRes, unreadRes] = await Promise.all([
+          apiRequest('/notifications/orders/unread-count'),
+          apiRequest('/notifications/orders?unread=true&limit=20'),
+        ]);
+        const count = countRes?.data?.count ?? 0;
+        const unreadRows = Array.isArray(unreadRes?.data) ? unreadRes.data : [];
         setUnreadCount(count);
+
+        const nextToasts = unreadRows
+          .filter((row) => row?._id && !toastedNotificationIdsRef.current.has(row._id))
+          .sort(
+            (a, b) =>
+              new Date(a?.created_at || 0).getTime() - new Date(b?.created_at || 0).getTime()
+          );
+
+        nextToasts.forEach((row) => {
+          const isMessage = row?.type === 'message';
+          toast.info(
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-slate-900">
+                {row.title || (isMessage ? 'New message' : 'Order update')}
+              </p>
+              <p className="text-xs text-slate-600">
+                {row.message || 'You have a new notification.'}
+              </p>
+            </div>,
+            {
+              toastId: `customer-notification-${row._id}`,
+              position: 'top-right',
+              autoClose: 5000,
+              hideProgressBar: false,
+            }
+          );
+          toastedNotificationIdsRef.current.add(row._id);
+        });
+
+        if (nextToasts.length > 0) {
+          setToastedNotificationIds(Array.from(toastedNotificationIdsRef.current));
+        }
       } catch {
         // silent
       }

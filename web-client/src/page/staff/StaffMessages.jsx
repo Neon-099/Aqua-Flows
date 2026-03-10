@@ -18,6 +18,7 @@ import { listConversations, getMessages, sendMessage as sendMessageApi, markSeen
 import { createChatSocket, emitWithAck } from '../../utils/socket';
 import { formatConversationTime, formatMessageTime } from '../../utils/messagingFormatters';
 import StaffProfileModal from '../../components/staff/StaffProfileModal';
+import StaffNotificationBell from '../../components/staff/StaffNotificationBell';
 
 const title = (v) => (v ? `${v[0].toUpperCase()}${v.slice(1)}` : 'User');
 const short = (id) => String(id || '').slice(0, 6);
@@ -308,19 +309,22 @@ const StaffMessages = () => {
           </Link>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setProfileModalOpen(true)}
-          className="flex items-center gap-4 rounded-xl px-2 py-1 hover:bg-slate-100 transition-colors"
-        >
-          <div className="text-right">
-            <p className="text-sm font-black text-slate-900 leading-none">{user?.name}</p>
-            <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">{connected ? 'Realtime online' : 'Offline mode'}</p>
-          </div>
-          <div className="w-10 h-10 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold">
-            {user?.name ? user.name.slice(0, 2).toUpperCase() : 'ST'}
-          </div>
-        </button>
+        <div className="flex items-center gap-3">
+          <StaffNotificationBell userId={user?._id || user?.id} />
+          <button
+            type="button"
+            onClick={() => setProfileModalOpen(true)}
+            className="flex items-center gap-4 rounded-xl px-2 py-1 hover:bg-slate-100 transition-colors"
+          >
+            <div className="text-right">
+              <p className="text-sm font-black text-slate-900 leading-none">{user?.name}</p>
+              <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-tighter">{connected ? 'Realtime online' : 'Offline mode'}</p>
+            </div>
+            <div className="w-10 h-10 rounded-full bg-blue-600 border-2 border-white shadow-md flex items-center justify-center text-white font-bold">
+              {user?.name ? user.name.slice(0, 2).toUpperCase() : 'ST'}
+            </div>
+          </button>
+        </div>
       </nav>
       
       <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-10 py-6">

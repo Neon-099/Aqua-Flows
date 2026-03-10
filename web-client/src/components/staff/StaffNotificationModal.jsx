@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../../utils/api';
 
-const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
+const StaffNotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
@@ -13,7 +13,7 @@ const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
     const load = async () => {
       setLoading(true);
       try {
-        const res = await apiRequest('/notifications/orders?unread=false&limit=50');
+        const res = await apiRequest('/notifications/messages?unread=false&limit=50');
         const rows = res?.data || [];
         setItems(rows);
         onChangeUnreadCount?.(rows.filter((row) => !row.is_read).length);
@@ -26,13 +26,13 @@ const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
     };
 
     load();
-  }, [open]);
+  }, [open, onChangeUnreadCount]);
 
   const markOne = async (id) => {
     if (!id) return;
     setMarkingId(id);
     try {
-      await apiRequest('/notifications/orders/mark-read', 'PUT', { ids: [id] });
+      await apiRequest('/notifications/messages/mark-read', 'PUT', { ids: [id] });
       setItems((prev) => {
         const next = prev.map((row) =>
           row._id === id ? { ...row, is_read: true, read_at: new Date().toISOString() } : row
@@ -48,7 +48,7 @@ const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
   const markAll = async () => {
     setMarkingAll(true);
     try {
-      await apiRequest('/notifications/orders/mark-read', 'PUT', { ids: [] });
+      await apiRequest('/notifications/messages/mark-read', 'PUT', { ids: [] });
       setItems((prev) =>
         prev.map((row) => ({
           ...row,
@@ -68,7 +68,7 @@ const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-900">Notifications</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Message Notifications</h3>
           <button
             type="button"
             onClick={onClose}
@@ -95,7 +95,7 @@ const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
         <div className="max-h-[420px] overflow-y-auto px-6 pb-6">
           {loading && <p className="text-sm text-slate-400">Loading notifications...</p>}
           {!loading && items.length === 0 && (
-            <p className="text-sm text-slate-400">No notifications yet.</p>
+            <p className="text-sm text-slate-400">No message notifications yet.</p>
           )}
 
           <div className="space-y-3">
@@ -110,20 +110,8 @@ const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-bold text-slate-900">{row.title}</p>
-                      {row.type === 'message' && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full bg-blue-100 text-blue-700 px-2 py-0.5">
-                          Message
-                        </span>
-                      )}
-                      {row.type === 'order_status' && (
-                        <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">
-                          Order
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">{row.message}</p>
+                    <p className="text-sm font-bold text-slate-900">{row.title || 'New message'}</p>
+                    <p className="text-xs text-slate-500 mt-1">{row.message || 'You have a new message.'}</p>
                   </div>
                   <button
                     type="button"
@@ -143,4 +131,4 @@ const NotificationModal = ({ open, onClose, onChangeUnreadCount }) => {
   );
 };
 
-export default NotificationModal;
+export default StaffNotificationModal;
