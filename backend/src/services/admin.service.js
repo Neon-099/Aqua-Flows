@@ -7,8 +7,14 @@ import Order from '../models/Order.model.js';
 import Payment from '../models/Payment.model.js';
 import PaymentEvent from '../models/PaymentEvent.model.js';
 import OrderStatusHistory from '../models/OrderStatusHistory.model.js';
+import OrderAssignment from '../models/OrderAssignment.model.js';
 import AdminActionLog from '../models/AdminActionLog.model.js';
+import Conversation from '../models/Conversation.model.js';
+import Message from '../models/Message.model.js';
+import Notification from '../models/Notification.model.js';
+import PushToken from '../models/PushToken.model.js';
 import { createCheckoutSession, getCheckoutSession, getPaymentIntent } from './paymongo.service.js';
+import { seedDefaultConversationsForUser } from './chat.service.js';
 import {
   ORDER_PAYMENT_STATUS,
   ORDER_STATUS,
@@ -156,6 +162,16 @@ export const createUser = async (payload) => {
     );
     mark('synced admin profile');
   }
+  try {
+    await seedDefaultConversationsForUser(user);
+    mark('seeded default conversations');
+  } catch (error) {
+    console.error('[chat-seed][admin.createUser] failed', {
+      userId: user?._id,
+      role: user?.role,
+      error: error?.message || String(error),
+    });
+  }
   mark('done');
   return {
     ...user.toObject(),
@@ -261,6 +277,20 @@ export const updateUser = async (id, payload) => {
   const admin = await Admin.findOne({ user_id: user._id });
   mark('loaded role profiles');
 
+  if (previousRole !== user.role) {
+    try {
+      await seedDefaultConversationsForUser(user);
+      mark('seeded default conversations after role change');
+    } catch (error) {
+      console.error('[chat-seed][admin.updateUser] failed', {
+        userId: user?._id,
+        previousRole,
+        nextRole: user?.role,
+        error: error?.message || String(error),
+      });
+    }
+  }
+
   mark('done');
   return {
     ...user.toObject(),
@@ -294,6 +324,95 @@ export const restoreUser = async (id) => {
   user.isArchived = false;
   await user.save();
   return user;
+};
+
+export const deleteUser = async (id) => {
+  const user = await User.findById(id);
+  if (!user) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (!user.isArchived) {
+    const err = new Error('Only archived users can be permanently deleted');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const [customer, rider, staff, admin] = await Promise.all([
+    Customer.findOne({ user_id: user._id }).select('_id user_id'),
+    Rider.findOne({ user_id: user._id }).select('_id user_id'),
+    Staff.findOne({ user_id: user._id }).select('_id user_id'),
+    Admin.findOne({ user_id: user._id }).select('_id user_id'),
+  ]);
+
+  const orderFilter = [];
+  if (customer?._id) orderFilter.push({ customer_id: customer._id });
+  if (rider?._id) orderFilter.push({ assigned_rider_id: rider._id });
+
+  const orders = orderFilter.length
+    ? await Order.find({ $or: orderFilter }).select('_id')
+    : [];
+  const orderIds = orders.map((row) => row._id);
+
+  const conversationsByUser = await Conversation.find({ 'participants.userId': user._id }).select('_id');
+  const conversationsByOrder = orderIds.length
+    ? await Conversation.find({ orderId: { $in: orderIds } }).select('_id')
+    : [];
+  const conversationIds = [
+    ...new Set([...conversationsByUser, ...conversationsByOrder].map((row) => row._id)),
+  ];
+
+  if (conversationIds.length) {
+    await Message.deleteMany({ conversationId: { $in: conversationIds } });
+  }
+  if (orderIds.length) {
+    await Message.deleteMany({ orderId: { $in: orderIds } });
+  }
+  await Message.deleteMany({ $or: [{ senderId: user._id }, { receiverId: user._id }] });
+
+  if (conversationIds.length) {
+    await Conversation.deleteMany({ _id: { $in: conversationIds } });
+  }
+
+  if (orderIds.length) {
+    const payments = await Payment.find({ order_id: { $in: orderIds } }).select('_id');
+    const paymentIds = payments.map((row) => row._id);
+    if (paymentIds.length) {
+      await PaymentEvent.deleteMany({ payment_id: { $in: paymentIds } });
+      await Payment.deleteMany({ _id: { $in: paymentIds } });
+    }
+
+    await Promise.all([
+      OrderAssignment.deleteMany({ order_id: { $in: orderIds } }),
+      OrderStatusHistory.deleteMany({ order_id: { $in: orderIds } }),
+      Notification.deleteMany({ order_id: { $in: orderIds } }),
+    ]);
+
+    await Order.deleteMany({ _id: { $in: orderIds } });
+  }
+
+  await Promise.all([
+    OrderAssignment.deleteMany({ assigned_by: user._id }),
+    OrderStatusHistory.deleteMany({ changed_by: user._id }),
+    Notification.deleteMany({ user_id: user._id }),
+    customer?._id ? Notification.deleteMany({ customer_id: customer._id }) : Promise.resolve(),
+    PushToken.deleteMany({ userId: user._id }),
+    AdminActionLog.deleteMany({
+      $or: [{ actor_user_id: user._id }, { target_type: 'user', target_id: user._id }],
+    }),
+  ]);
+
+  await Promise.all([
+    Customer.deleteOne({ user_id: user._id }),
+    Rider.deleteOne({ user_id: user._id }),
+    Staff.deleteOne({ user_id: user._id }),
+    Admin.deleteOne({ user_id: user._id }),
+  ]);
+
+  await User.deleteOne({ _id: user._id });
+
+  return { deletedUserId: user._id, deletedOrders: orderIds.length, deletedConversations: conversationIds.length };
 };
 
 const parseIntSafe = (value, fallback, min = 1, max = 100) => {

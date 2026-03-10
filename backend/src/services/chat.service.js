@@ -27,6 +27,7 @@ const debugChat = (...args) => {
 
 const ARCHIVE_RETENTION_DAYS = 7;
 const FINISHED_ORDER_STATUSES = [ORDER_STATUS.COMPLETED, ORDER_STATUS.CANCELLED];
+const ROLE_DIRECTORY_BATCH_SIZE = 200;
 
 export const getOrCreateConversation = async ({ senderUser, receiverId, orderId = null }) => {
   const receiverUser = await getUserByIdOrFail(receiverId);
@@ -184,25 +185,41 @@ export const runChatArchiveMaintenance = async () => {
   await purgeExpiredArchivedConversations();
 };
 
-const bootstrapDefaultConversationsForUser = async (user) => {
+export const seedDefaultConversationsForUser = async (user) => {
+  if (!user?._id) {
+    return { skipped: true, reason: 'missing_user' };
+  }
+
   const role = normalizeChatRole(user.role);
-  if (role === 'customer') {
-    await ensureCustomerStaffConversation(user);
-    await ensureCustomerAssignedRiderConversations(user);
-    await ensureRoleDirectoryConversations(user, ['staff', 'rider']);
-    return;
+  if (!['customer', 'rider', 'staff'].includes(role)) {
+    return { skipped: true, reason: 'unsupported_role', role };
   }
 
-  if (role === 'rider') {
-    await ensureRiderStaffConversation(user);
-    await ensureRiderAssignedCustomerConversations(user);
-    await ensureRoleDirectoryConversations(user, ['staff', 'customer', 'user']);
-    return;
-  }
+  try {
+    if (role === 'customer') {
+      await ensureCustomerStaffConversation(user);
+      await ensureCustomerAssignedRiderConversations(user);
+      await ensureRoleDirectoryConversations(user, ['staff', 'rider']);
+      return { skipped: false, role };
+    }
 
-  if (role === 'staff') {
+    if (role === 'rider') {
+      await ensureRiderStaffConversation(user);
+      await ensureRiderAssignedCustomerConversations(user);
+      await ensureRoleDirectoryConversations(user, ['staff', 'customer', 'user']);
+      return { skipped: false, role };
+    }
+
     await ensureStaffDirectoryConversations(user);
     await ensureRoleDirectoryConversations(user, ['customer', 'user', 'rider']);
+    return { skipped: false, role };
+  } catch (error) {
+    debugChat('seedDefaultConversationsForUser:error', {
+      userId: user._id,
+      role: user.role,
+      error: error?.message || String(error),
+    });
+    throw error;
   }
 };
 
@@ -237,63 +254,81 @@ const ensureRiderStaffConversation = async (riderUser) => {
 };
 
 const ensureStaffDirectoryConversations = async (staffUser) => {
-  const [customerUsers, riderUsers] = await Promise.all([
-    User.find({ role: { $in: ['customer', 'user'] } }).select('_id').limit(100),
-    User.find({ role: 'rider' }).select('_id').limit(100),
+  const [customerResult, riderResult] = await Promise.all([
+    ensureRoleDirectoryConversations(staffUser, ['customer', 'user']),
+    ensureRoleDirectoryConversations(staffUser, ['rider']),
   ]);
+  debugChat('ensureStaffDirectoryConversations:results', {
+    userId: staffUser?._id,
+    createdOrFound: (customerResult?.createdOrFound || 0) + (riderResult?.createdOrFound || 0),
+    failed: (customerResult?.failed || 0) + (riderResult?.failed || 0),
+  });
+};
 
-  const targets = [
-    ...customerUsers.map((u) => u._id),
-    ...riderUsers.map((u) => u._id),
-  ].filter((id) => id && id !== staffUser._id);
-
-  if (!targets.length) return;
-
-  const tasks = targets.map((receiverId) =>
-    getOrCreateConversation({
-      senderUser: staffUser,
-      receiverId,
-      orderId: null,
-    })
-  );
-
-  await Promise.allSettled(tasks);
+const getTargetUsersByRoleBatch = async ({ targetRoles, afterId, limit = ROLE_DIRECTORY_BATCH_SIZE }) => {
+  const filter = {
+    role: { $in: targetRoles },
+    isArchived: { $ne: true },
+  };
+  if (afterId) filter._id = { $gt: afterId };
+  return User.find(filter)
+    .select('_id')
+    .sort({ _id: 1 })
+    .limit(limit);
 };
 
 const ensureRoleDirectoryConversations = async (user, targetRoles = []) => {
   if (!Array.isArray(targetRoles) || targetRoles.length === 0) return;
-  const targets = await User.find({ role: { $in: targetRoles } }).select('_id').limit(200);
-  debugChat('ensureRoleDirectoryConversations:targets', {
-    userId: user._id,
-    userRole: user.role,
-    targetRoles,
-    targetCount: targets.length,
-  });
-  const tasks = targets
-    .map((target) => target?._id)
-    .filter((id) => id && id !== user._id)
-    .map((receiverId) =>
-      getOrCreateConversation({
-        senderUser: user,
-        receiverId,
-        orderId: null,
-      })
-    );
-  if (!tasks.length) return;
-  const results = await Promise.allSettled(tasks);
-  const createdOrFound = results.filter((r) => r.status === 'fulfilled').length;
-  const failed = results.filter((r) => r.status === 'rejected').length;
-  const errors = results
-    .filter((r) => r.status === 'rejected')
-    .map((r) => r.reason?.message || String(r.reason))
-    .slice(0, 5);
+
+  let createdOrFound = 0;
+  let failed = 0;
+  const errors = [];
+  let afterId = '';
+  let targetCount = 0;
+
+  while (true) {
+    const targets = await getTargetUsersByRoleBatch({ targetRoles, afterId });
+    if (!targets.length) break;
+
+    targetCount += targets.length;
+    afterId = targets[targets.length - 1]?._id || afterId;
+
+    const tasks = targets
+      .map((target) => target?._id)
+      .filter((id) => id && id !== user._id)
+      .map((receiverId) =>
+        getOrCreateConversation({
+          senderUser: user,
+          receiverId,
+          orderId: null,
+        })
+      );
+
+    if (tasks.length > 0) {
+      const results = await Promise.allSettled(tasks);
+      createdOrFound += results.filter((r) => r.status === 'fulfilled').length;
+      failed += results.filter((r) => r.status === 'rejected').length;
+      if (errors.length < 5) {
+        const batchErrors = results
+          .filter((r) => r.status === 'rejected')
+          .map((r) => r.reason?.message || String(r.reason))
+          .slice(0, 5 - errors.length);
+        errors.push(...batchErrors);
+      }
+    }
+  }
+
   debugChat('ensureRoleDirectoryConversations:results', {
     userId: user._id,
     userRole: user.role,
+    targetRoles,
+    targetCount,
     createdOrFound,
     failed,
     errors,
   });
+
+  return { targetCount, createdOrFound, failed, errors };
 };
 
 const archiveFinishedOrderConversations = async () => {

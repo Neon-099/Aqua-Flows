@@ -53,6 +53,15 @@ export const restoreUser = async (req, res, next) => {
   }
 };
 
+export const deleteUser = async (req, res, next) => {
+  try {
+    const result = await adminService.deleteUser(req.params.id);
+    res.status(200).json({ success: true, result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getFeatureConfig = async (req, res, next) => {
   try {
     const data = await adminService.getFeatureConfig();

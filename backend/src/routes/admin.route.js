@@ -13,6 +13,7 @@ import {
   reopenOrderByAdmin,
   resolvePayment,
   restoreUser,
+  deleteUser,
   updateUser,
 } from '../controllers/admin.controller.js';
 import { protect, authorize } from '../middlewares/auth.middleware.js';
@@ -27,6 +28,7 @@ router.post('/users', validateCreateUser, createUser);
 router.put('/users/:id', validateUpdateUser, updateUser);
 router.patch('/users/:id/archive', archiveUser);
 router.patch('/users/:id/restore', restoreUser);
+router.delete('/users/:id', deleteUser);
 router.get('/config', getFeatureConfig);
 router.get('/overview/today', getOverviewToday);
 router.get('/orders', getOrders);

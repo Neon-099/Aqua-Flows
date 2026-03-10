@@ -6,6 +6,7 @@ import { sendEmail } from '../utils/sendEmail.js';
 import crypto from 'crypto';
 import { env } from '../config/env.js';
 import Customer from '../models/Customer.model.js';
+import { seedDefaultConversationsForUser } from './chat.service.js';
 
 export const registerUser = async (email, password, name, address, phone) => {
   const userExists = await User.findOne({ email: { $eq: email } });
@@ -23,6 +24,15 @@ export const registerUser = async (email, password, name, address, phone) => {
     { $set: { address, phone }, $setOnInsert: { user_id: user._id } },
     { upsert: true }
   );
+  try {
+    await seedDefaultConversationsForUser(user);
+  } catch (error) {
+    console.error('[chat-seed][registerUser] failed', {
+      userId: user?._id,
+      role: user?.role,
+      error: error?.message || String(error),
+    });
+  }
   return {
     _id: user._id,
     email: user.email,

@@ -1,6 +1,7 @@
 // backend/src/middlewares/chat.socket.js
 import Conversation from '../models/Conversation.model.js';
 import { sendPushToUser } from '../services/fcm.service.js';
+import { createMessageNotificationForUser } from '../services/notification.service.js';
 import * as chatService from '../services/chat.service.js';
 import { assertUserInConversation, assertCanJoinOrderRoom } from '../services/chat.authz.service.js';
 
@@ -122,9 +123,16 @@ export const registerChatHandlers = (io, socket) => {
       // Ack immediately after durable write + broadcast
       ack({ ok: true, data: eventPayload });
 
-      // Non-critical push notification in background (do not block ack)
+      // Non-critical notification side effects in background (do not block ack)
       Promise.resolve()
         .then(async () => {
+          await createMessageNotificationForUser({
+            receiverUser: result.receiverUser,
+            senderUser: socket.user,
+            conversation: result.conversation,
+            message: result.saved.message,
+          });
+
           const sockets = await io.in(roomOfUser(result.receiverUser._id)).fetchSockets();
           if (sockets.length > 0) return;
 

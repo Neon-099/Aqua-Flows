@@ -10,6 +10,7 @@ import PaymentEvent from '../models/PaymentEvent.model.js';
 import OrderStatusHistory from '../models/OrderStatusHistory.model.js';
 import OrderAssignment from '../models/OrderAssignment.model.js';
 import { createOrderNotificationForOrder } from './notification.service.js';
+import { getOrCreateConversation } from './chat.service.js';
 import {
   ORDER_STATUS,
   ORDER_PAYMENT_STATUS,
@@ -167,6 +168,26 @@ const enrichOrdersWithProfiles = async (orders) => {
       assigned_rider_user_id: riderUser?._id || null,
     };
   });
+};
+
+const ensureOrderConversationSafe = async ({ orderId, customerId, riderId }) => {
+  if (!orderId || !customerId || !riderId) return;
+  try {
+    const [customer, rider] = await Promise.all([
+      Customer.findById(customerId).select('_id user_id'),
+      Rider.findById(riderId).select('_id user_id'),
+    ]);
+    if (!customer?.user_id || !rider?.user_id) return;
+    const senderUser = await User.findById(customer.user_id).select('_id role name');
+    if (!senderUser) return;
+    await getOrCreateConversation({
+      senderUser,
+      receiverId: rider.user_id,
+      orderId,
+    });
+  } catch (err) {
+    console.error('[chat] ensureOrderConversation failed:', err?.message || String(err));
+  }
 };
 
 export const createOrder = async ({ user, payload }) => {
@@ -832,6 +853,11 @@ export const assignRider = async ({ user, orderId, riderId }) => {
     }], { session });
 
     await session.commitTransaction();
+    await ensureOrderConversationSafe({
+      orderId: order._id,
+      customerId: order.customer_id,
+      riderId: order.assigned_rider_id,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -911,6 +937,11 @@ export const autoAssignRider = async({user, orderId, weights}) => {
       }], { session });
 
       await session.commitTransaction();
+      await ensureOrderConversationSafe({
+        orderId: order._id,
+        customerId: order.customer_id,
+        riderId: order.assigned_rider_id,
+      });
 
       return { order, rider: updatedRider };
     } catch (err) {
@@ -1068,11 +1099,6 @@ export const riderStartDelivery = async ({ user, orderId }) => {
     await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
-    await createOrderNotificationForOrder({
-      order,
-      status: ORDER_STATUS.OUT_FOR_DELIVERY,
-      session,
-    });
     await createOrderNotificationForOrder({
       order,
       status: ORDER_STATUS.OUT_FOR_DELIVERY,
@@ -1237,11 +1263,6 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
       order.status = ORDER_STATUS.COMPLETED;
       await order.save({ session });
       await addHistory(session, order._id, ORDER_STATUS.COMPLETED, user._id);
-      await createOrderNotificationForOrder({
-        order,
-        status: ORDER_STATUS.COMPLETED,
-        session,
-      });
       await createOrderNotificationForOrder({
         order,
         status: ORDER_STATUS.COMPLETED,

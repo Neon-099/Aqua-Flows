@@ -52,6 +52,45 @@ export const createOrderNotificationForOrder = async ({ order, status, session }
   await Notification.create(doc);
 };
 
+export const createMessageNotificationForUser = async ({
+  receiverUser,
+  senderUser,
+  conversation,
+  message,
+  session,
+}) => {
+  if (!receiverUser?._id || !senderUser?._id) return;
+  const receiverCustomer = await Customer.findOne({ user_id: receiverUser._id }).select('_id user_id');
+
+  const trimmed = String(message || '').trim();
+  if (!trimmed) return;
+
+  const roleRaw = String(senderUser?.role || '').toLowerCase();
+  const roleLabel =
+    roleRaw === 'customer' || roleRaw === 'user'
+      ? 'Customer'
+      : roleRaw === 'rider'
+      ? 'Rider'
+      : roleRaw === 'staff' || roleRaw === 'admin'
+      ? 'Staff'
+      : 'User';
+  const preview = trimmed.length > 90 ? `${trimmed.slice(0, 90)}...` : trimmed;
+  const doc = {
+    customer_id: receiverCustomer?._id || null,
+    user_id: receiverUser._id,
+    order_id: conversation?.orderId || null,
+    type: 'message',
+    title: `${roleLabel} • ${senderUser?.name || 'New message'}`,
+    message: preview,
+  };
+
+  if (session) {
+    await Notification.create([doc], { session });
+    return;
+  }
+  await Notification.create(doc);
+};
+
 export const listOrderNotificationForUser = async ({ userId, unreadOnly = false, limit = 50 }) => {
   const customer = await Customer.findOne({ user_id: userId }).select('_id user_id');
   if (!customer) return [];
@@ -59,6 +98,20 @@ export const listOrderNotificationForUser = async ({ userId, unreadOnly = false,
   const filter = {
     customer_id: customer._id,
     user_id: userId,
+  };
+  if (unreadOnly) filter.is_read = false;
+
+  return Notification.find(filter)
+    .sort({ created_at: -1 })
+    .limit(Number(limit || 50));
+};
+
+export const listMessageNotificationForUser = async ({ userId, unreadOnly = false, limit = 50 }) => {
+  if (!userId) return [];
+
+  const filter = {
+    user_id: userId,
+    type: 'message',
   };
   if (unreadOnly) filter.is_read = false;
 
@@ -86,6 +139,24 @@ export const markOrderNotificationRead = async ({ userId, ids }) => {
   return { matched: result.matchedCount || 0, modified: result.modifiedCount || 0 };
 };
 
+export const markMessageNotificationRead = async ({ userId, ids }) => {
+  if (!userId) return { matched: 0, modified: 0 };
+
+  const filter = {
+    user_id: userId,
+    type: 'message',
+  };
+  if (Array.isArray(ids) && ids.length > 0) {
+    filter._id = { $in: ids };
+  }
+
+  const result = await Notification.updateMany(filter, {
+    $set: { is_read: true, read_at: new Date() },
+  });
+
+  return { matched: result.matchedCount || 0, modified: result.modifiedCount || 0 };
+};
+
 export const getUnreadNotificationCountForUser = async ({ userId }) => {
   const customer = await Customer.findOne({ user_id: userId }).select('_id user_id');
   if (!customer) return 0;
@@ -93,6 +164,18 @@ export const getUnreadNotificationCountForUser = async ({ userId }) => {
   const count = await Notification.countDocuments({
     customer_id: customer._id,
     user_id: userId,
+    is_read: false,
+  });
+
+  return Number(count || 0);
+};
+
+export const getUnreadMessageNotificationCountForUser = async ({ userId }) => {
+  if (!userId) return 0;
+
+  const count = await Notification.countDocuments({
+    user_id: userId,
+    type: 'message',
     is_read: false,
   });
 
