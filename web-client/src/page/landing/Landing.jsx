@@ -283,7 +283,7 @@ const Landing = () => {
                 <span className="font-bold text-xl">AquaFlow</span>
               </div>
               <p className="text-blue-200 text-sm leading-relaxed">
-                Your trusted partner for clean, safe, and reliable water delivery. Serving the community since 2024.
+                Your trusted partner for clean, safe, and reliable water delivery. Serving the community since 2026.
               </p>
             </div>
 
