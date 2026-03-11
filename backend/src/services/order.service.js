@@ -9,9 +9,10 @@ import Payment from '../models/Payment.model.js';
 import PaymentEvent from '../models/PaymentEvent.model.js';
 import OrderStatusHistory from '../models/OrderStatusHistory.model.js';
 import OrderAssignment from '../models/OrderAssignment.model.js';
+import Conversation from '../models/Conversation.model.js';
 import { createOrderNotificationForOrder, createCustomOrderNotificationForOrder } from './notification.service.js';
 import { sendPushToUser } from './fcm.service.js';
-import { getOrCreateConversation } from './chat.service.js';
+import { getOrCreateConversation, seedDefaultConversationsForUser } from './chat.service.js';
 import {
   ORDER_STATUS,
   ORDER_PAYMENT_STATUS,
@@ -181,6 +182,24 @@ const ensureOrderConversationSafe = async ({ orderId, customerId, riderId }) => 
     if (!customer?.user_id || !rider?.user_id) return;
     const senderUser = await User.findById(customer.user_id).select('_id role name');
     if (!senderUser) return;
+    const ids = [senderUser._id, rider.user_id].sort();
+    const desiredHash = `${ids[0]}:${ids[1]}`;
+
+    const exact = await Conversation.findOne({ orderId, participantsHash: desiredHash });
+    if (exact) return;
+
+    const existing = await Conversation.findOne({ orderId }).sort({ updatedAt: -1 });
+    if (existing) {
+      const priorCustomer = existing.participants?.find((p) => p.userId === senderUser._id);
+      existing.participants = [
+        { userId: senderUser._id, role: 'customer', lastReadAt: priorCustomer?.lastReadAt || new Date() },
+        { userId: rider.user_id, role: 'rider', lastReadAt: null },
+      ];
+      existing.archivedAt = null;
+      await existing.save();
+      return;
+    }
+
     await getOrCreateConversation({
       senderUser,
       receiverId: rider.user_id,
@@ -324,6 +343,7 @@ export const createOrder = async ({ user, payload }) => {
 
     await session.commitTransaction();
     await sendOrderStatusPush({ order: order[0], status: ORDER_STATUS.PENDING });
+    await seedDefaultConversationsForUser(user);
 
     return {
       order: order[0],
@@ -681,6 +701,13 @@ export const confirmOrder = async ({ user, orderId }) => {
         order,
         status: ORDER_STATUS.CONFIRMED,
       });
+      if (order.assigned_rider_id) {
+        await ensureOrderConversationSafe({
+          orderId: order._id,
+          customerId: order.customer_id,
+          riderId: order.assigned_rider_id,
+        });
+      }
       return order;
     } catch (err) {
       await session.abortTransaction();
