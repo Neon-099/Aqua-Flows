@@ -9,7 +9,8 @@ import Payment from '../models/Payment.model.js';
 import PaymentEvent from '../models/PaymentEvent.model.js';
 import OrderStatusHistory from '../models/OrderStatusHistory.model.js';
 import OrderAssignment from '../models/OrderAssignment.model.js';
-import { createOrderNotificationForOrder } from './notification.service.js';
+import { createOrderNotificationForOrder, createCustomOrderNotificationForOrder } from './notification.service.js';
+import { sendPushToUser } from './fcm.service.js';
 import { getOrCreateConversation } from './chat.service.js';
 import {
   ORDER_STATUS,
@@ -138,7 +139,7 @@ const enrichOrdersWithProfiles = async (orders) => {
   const riderIds = [...new Set(rows.map((o) => o.assigned_rider_id).filter(Boolean))];
 
   const [customers, riders] = await Promise.all([
-    Customer.find({ _id: { $in: customerIds } }).select('_id user_id default_address'),
+    Customer.find({ _id: { $in: customerIds } }).select('_id user_id address'),
     Rider.find({ _id: { $in: riderIds } }).select('_id user_id'),
   ]);
 
@@ -163,7 +164,7 @@ const enrichOrdersWithProfiles = async (orders) => {
     return {
       ...order,
       customer_name: customerUser?.name || null,
-      customer_address: customer?.default_address || customerUser?.address || null,
+      customer_address: customer?.address || customerUser?.address || null,
       assigned_rider_name: riderUser?.name || null,
       assigned_rider_user_id: riderUser?._id || null,
     };
@@ -322,6 +323,7 @@ export const createOrder = async ({ user, payload }) => {
     }
 
     await session.commitTransaction();
+    await sendOrderStatusPush({ order: order[0], status: ORDER_STATUS.PENDING });
 
     return {
       order: order[0],
@@ -608,6 +610,10 @@ export const cancelOrder = async ({ user, orderId }) => {
     });
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.CANCELLED,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -671,6 +677,10 @@ export const confirmOrder = async ({ user, orderId }) => {
       }
 
       await session.commitTransaction();
+      await sendOrderStatusPush({
+        order,
+        status: ORDER_STATUS.CONFIRMED,
+      });
       return order;
     } catch (err) {
       await session.abortTransaction();
@@ -719,6 +729,10 @@ export const autoAcceptPendingOrders = async ({ maxAgeSeconds = 60, batchSize = 
       await addHistory(session, order._id, ORDER_STATUS.CONFIRMED, 'SYSTEM_AUTO_ACCEPT');
 
       await session.commitTransaction();
+      await sendOrderStatusPush({
+        order,
+        status: ORDER_STATUS.CONFIRMED,
+      });
       updated += 1;
     } catch (err) {
       await session.abortTransaction();
@@ -773,6 +787,10 @@ export const riderPickup = async ({ user, orderId }) => {
     });
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.PICKED_UP,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -1054,10 +1072,10 @@ export const autoAssignPreview = async ({ user, orderId, weights }) => {
 };
 
 const applyEtaToOrder = async (session, order, stage = ORDER_STATUS.PICKED_UP) => {
-  const customer = await Customer.findById(order.customer_id).select('default_address user_id');
+  const customer = await Customer.findById(order.customer_id).select('address user_id');
   if (!customer) return;
 
-  let address = customer.default_address;
+  let address = customer.address;
   if (!address && customer.user_id) {
     const customerUser = await User.findById(customer.user_id).select('address');
     address = customerUser?.address || '';
@@ -1070,6 +1088,64 @@ const applyEtaToOrder = async (session, order, stage = ORDER_STATUS.PICKED_UP) =
   order.eta_minutes_max = eta.eta_minutes_max;
   order.eta_text = eta.eta_text;
   order.eta_last_calculated_at = eta.eta_last_calculated_at;
+};
+
+const buildOrderPushContent = (status, orderCode) => {
+  const code = orderCode || '';
+  switch (status) {
+    case ORDER_STATUS.PENDING:
+      return { title: 'Order received', body: `We received your order ${code}.` };
+    case ORDER_STATUS.CONFIRMED:
+      return { title: 'Order confirmed', body: `Your order ${code} is confirmed.` };
+    case ORDER_STATUS.PICKED_UP:
+      return { title: 'Order picked up', body: `Your order ${code} has been picked up.` };
+    case ORDER_STATUS.OUT_FOR_DELIVERY:
+      return { title: 'Out for delivery', body: `Your order ${code} is out for delivery.` };
+    case ORDER_STATUS.DELIVERED:
+      return { title: 'Order delivered', body: `Your order ${code} has been delivered.` };
+    case ORDER_STATUS.PENDING_PAYMENT:
+      return { title: 'Payment pending', body: `Payment is pending for order ${code}.` };
+    case ORDER_STATUS.COMPLETED:
+      return { title: 'Order completed', body: `Your order ${code} is completed.` };
+    case ORDER_STATUS.CANCELLED:
+      return { title: 'Order cancelled', body: `Your order ${code} was cancelled.` };
+    default:
+      return { title: 'Order update', body: `Update for order ${code}.` };
+  }
+};
+
+const sendOrderStatusPush = async ({ order, status }) => {
+  if (!order?._id || !order?.customer_id) return;
+  const orderCode = order.order_code || order._id;
+  const nextStatus = status || order.status;
+  const content = buildOrderPushContent(nextStatus, orderCode);
+  const data = {
+    type: 'order_status',
+    orderId: String(order._id),
+    status: String(nextStatus || ''),
+  };
+
+  const customer = await Customer.findById(order.customer_id).select('_id user_id');
+  if (customer?.user_id) {
+    await sendPushToUser({
+      userId: customer.user_id,
+      title: content.title,
+      body: content.body,
+      data,
+    });
+  }
+
+  if (order.assigned_rider_id) {
+    const rider = await Rider.findById(order.assigned_rider_id).select('_id user_id');
+    if (rider?.user_id) {
+      await sendPushToUser({
+        userId: rider.user_id,
+        title: content.title,
+        body: content.body,
+        data,
+      });
+    }
+  }
 };
 
 
@@ -1106,6 +1182,24 @@ export const riderStartDelivery = async ({ user, orderId }) => {
     });
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.DELIVERED,
+    });
+    if (order.payment_method === PAYMENT_METHOD.COD) {
+      await sendOrderStatusPush({
+        order,
+        status: ORDER_STATUS.PENDING_PAYMENT,
+      });
+    } else if (
+      order.payment_method === PAYMENT_METHOD.GCASH &&
+      order.payment_status === ORDER_PAYMENT_STATUS.PAID
+    ) {
+      await sendOrderStatusPush({
+        order,
+        status: ORDER_STATUS.COMPLETED,
+      });
+    }
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -1204,6 +1298,10 @@ export const dispatchOrder = async ({ user, orderId }) => {
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.OUT_FOR_DELIVERY,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -1271,6 +1369,10 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
     }
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.PENDING_PAYMENT,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -1311,6 +1413,10 @@ export const riderCancelPickup = async ({ user, orderId }) => {
     });
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.PENDING,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -1350,6 +1456,10 @@ export const riderMarkPendingPayment = async ({ user, orderId }) => {
     });
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.PENDING_PAYMENT,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -1413,6 +1523,10 @@ export const confirmPaymentAndComplete = async ({ user, orderId, source }) => {
     }
 
     await session.commitTransaction();
+    await sendOrderStatusPush({
+      order,
+      status: ORDER_STATUS.COMPLETED,
+    });
     return order;
   } catch (err) {
     await session.abortTransaction();
@@ -1425,6 +1539,10 @@ export const confirmPaymentAndComplete = async ({ user, orderId, source }) => {
 export const handlePaymongoWebhook = async ({ event, raw }) => {
   const type = event?.data?.attributes?.type;
   const paymentIntentId = event?.data?.attributes?.data?.id;
+
+  let pushOrder = null;
+  let pushStatus = null;
+  let failedOrder = null;
 
   const session = await mongoose.startSession();
   try {
@@ -1458,6 +1576,8 @@ export const handlePaymongoWebhook = async ({ event, raw }) => {
             status: ORDER_STATUS.COMPLETED,
             session,
           });
+          pushOrder = order;
+          pushStatus = ORDER_STATUS.COMPLETED;
         }
 
         await order.save({ session });
@@ -1473,10 +1593,37 @@ export const handlePaymongoWebhook = async ({ event, raw }) => {
       if (order) {
         order.payment_status = ORDER_PAYMENT_STATUS.FAILED;
         await order.save({ session });
+        failedOrder = order;
       }
     }
 
     await session.commitTransaction();
+    if (pushOrder && pushStatus) {
+      await sendOrderStatusPush({ order: pushOrder, status: pushStatus });
+    }
+    if (failedOrder) {
+      const orderCode = failedOrder.order_code || failedOrder._id;
+      await createCustomOrderNotificationForOrder({
+        order: failedOrder,
+        status: failedOrder.status,
+        title: 'Payment failed',
+        message: `Payment failed for order ${orderCode}. Please try again.`,
+      });
+
+      const customer = await Customer.findById(failedOrder.customer_id).select('_id user_id');
+      if (customer?.user_id) {
+        await sendPushToUser({
+          userId: customer.user_id,
+          title: 'Payment failed',
+          body: `Payment failed for order ${orderCode}. Please try again.`,
+          data: {
+            type: 'order_status',
+            orderId: String(failedOrder._id),
+            status: String(failedOrder.status || ''),
+          },
+        });
+      }
+    }
     return { ok: true };
   } catch (err) {
     await session.abortTransaction();

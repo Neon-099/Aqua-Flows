@@ -55,7 +55,7 @@ export const updateProfile = async (req, res, next) => {
     if (address) {
       await Customer.findOneAndUpdate(
         { user_id: user._id },
-        { default_address: address },
+        { address },
         { upsert: true }
       );
     }

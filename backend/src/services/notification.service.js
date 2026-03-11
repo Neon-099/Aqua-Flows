@@ -52,6 +52,37 @@ export const createOrderNotificationForOrder = async ({ order, status, session }
   await Notification.create(doc);
 };
 
+export const createCustomOrderNotificationForOrder = async ({
+  order,
+  status,
+  title,
+  message,
+  session,
+}) => {
+  if (!order?.customer_id || !order?._id) return;
+
+  const customerQuery = Customer.findById(order.customer_id).select('_id user_id');
+  const customer = session ? await customerQuery.session(session) : await customerQuery;
+  if (!customer?.user_id) return;
+
+  const orderCode = order.order_code || order._id;
+  const nextStatus = status || order.status;
+  const doc = {
+    customer_id: customer._id,
+    user_id: customer.user_id,
+    order_id: order._id,
+    status: nextStatus,
+    title: title || 'Order update',
+    message: message || `Update for order ${orderCode}.`,
+  };
+
+  if (session) {
+    await Notification.create([doc], { session });
+    return;
+  }
+  await Notification.create(doc);
+};
+
 export const createMessageNotificationForUser = async ({
   receiverUser,
   senderUser,
