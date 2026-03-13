@@ -45,30 +45,10 @@ const Order = () => {
     isInitialLoading,
     handleSubmit,
     statusStyles,
-    ORDERS_PER_PAGE
+    ORDERS_PER_PAGE,
+    safeAddress,
+    sortedRecentOrders
   } = useOrders()
-  const safeAddress = (() => {
-    const value = String(user?.address ?? '').trim();
-    if (!value || value.toLowerCase() === 'null' || value.toLowerCase() === 'undefined') {
-      return 'Address unavailable';
-    }
-    return value;
-  })();
-
-  const statusSortRank = {
-    Pending: 1,
-    Confirmed: 2,
-    'In Transit': 3,
-    Delivered: 4,
-    Completed: 98,
-    CANCELLED: 99,
-  };
-  const sortedRecentOrders = [...paginatedOrders].sort((a, b) => {
-    const rankA = statusSortRank[a.status] ?? 50;
-    const rankB = statusSortRank[b.status] ?? 50;
-    if (rankA !== rankB) return rankA - rankB;
-    return 0;
-  });
   
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">

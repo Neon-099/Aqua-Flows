@@ -13,13 +13,23 @@ import CancelOrder from '../../components/CancelOrder';
 import useStaffOrders from './useStaffOrders';
 import StaffProfileModal from '../../components/staff/StaffProfileModal';
 import StaffNotificationBell from '../../components/staff/StaffNotificationBell';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 
 const StaffOrders = () => {
   const { user } = useAuth()
   const location = useLocation()
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const AUTO_ACCEPT_SCAN_SECONDS = 15;
+  const AUTO_ASSIGN_SCAN_SECONDS = 5 * 60;
+  const [nextAutoAcceptScanAt, setNextAutoAcceptScanAt] = useState(
+    () => Date.now() + AUTO_ACCEPT_SCAN_SECONDS * 1000
+  );
+  const [autoAcceptRemaining, setAutoAcceptRemaining] = useState(AUTO_ACCEPT_SCAN_SECONDS);
+  const [nextAutoAssignScanAt, setNextAutoAssignScanAt] = useState(
+    () => Date.now() + AUTO_ASSIGN_SCAN_SECONDS * 1000
+  );
+  const [autoAssignRemaining, setAutoAssignRemaining] = useState(AUTO_ASSIGN_SCAN_SECONDS);
   const {
     ORDERS_PER_PAGE,
     autoAssignWeights,
@@ -72,13 +82,12 @@ const StaffOrders = () => {
     handleOpenAssignPanel,
     handleAssignSelected,
     handleDispatchNowBulk,
+    autoAcceptTimerLabel,
+    autoAssignTimerLabel,
+    navButtonClass
   } = useStaffOrders();
 
-  const navButtonClass = (isActive) =>
-    isActive
-      ? 'flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all'
-      : 'flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all';
-
+  
   return (
     <div className="min-h-screen w-screen bg-slate-50 font-sans text-slate-800 flex flex-col overflow-x-hidden">
       {/* Top Navigation */}
@@ -136,6 +145,17 @@ const StaffOrders = () => {
                   {pendingOrdersCount}
                 </div>
               )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mb-2 text-xs text-slate-500">
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-700">
+                Auto-accept scan in {autoAcceptTimerLabel}
+              </span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">
+                Auto-assign scan in {autoAssignTimerLabel}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-600">
+                Assign scans apply to confirmed unassigned orders
+              </span>
             </div>
             <p className="text-sm text-slate-500">
               Updated just now

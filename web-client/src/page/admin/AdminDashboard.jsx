@@ -305,6 +305,9 @@ const AdminDashboard = ({ embedded = false }) => {
     }
   };
 
+  //TOTAL USER COUNT: 
+  const total_user = '';
+
   return (
     <div className={`${embedded ? "bg-transparent" : "min-h-screen bg-slate-50"} text-slate-900`}>
       <ToastStack toasts={toasts} />
@@ -352,16 +355,21 @@ const AdminDashboard = ({ embedded = false }) => {
           )}
 
           <section className={`${embedded ? "px-0 py-0" : "px-6 py-8 lg:px-10"}`}>
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 mb-4 lg:flex-row lg:items-center lg:justify-between">
               {embedded && (
-                <button
+                <div className="flex flex-row">
+                  <button
                   type="button"
                   onClick={openCreate}
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
                 >
                   <Plus size={16} />
-                  Add User
+                  Add Users
                 </button>
+                <p className="p-2 text-md font-semibold">
+                  Total user: {}
+                </p>
+                </div>
               )}
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

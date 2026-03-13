@@ -12,6 +12,17 @@ import Header from '../../components/Header'
 const title = (v) => (v ? `${v[0].toUpperCase()}${v.slice(1)}` : 'User');
 const short = (id) => String(id || '').slice(0, 8);
 const FINISHED_ORDER_STATUSES = new Set(['COMPLETED', 'CANCELLED']);
+const ARCHIVE_RETENTION_DAYS = 7;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const getArchiveDaysRemaining = (archivedAt) => {
+  if (!archivedAt) return null;
+  const archivedAtMs = new Date(archivedAt).getTime();
+  if (!Number.isFinite(archivedAtMs)) return null;
+  const deleteAt = archivedAtMs + ARCHIVE_RETENTION_DAYS * MS_PER_DAY;
+  const remainingMs = deleteAt - Date.now();
+  return Math.max(0, Math.ceil(remainingMs / MS_PER_DAY));
+};
 
 const mapConversation = (row, myId) => {
   const participants = Array.isArray(row?.participants) ? row.participants : [];
@@ -24,6 +35,8 @@ const mapConversation = (row, myId) => {
   const orderCodeRaw = row.orderCode || row.order_code || null;
   const normalizedOrderCode = orderCodeRaw ? String(orderCodeRaw) : '';
   const shortOrderCode = normalizedOrderCode ? normalizedOrderCode.slice(-8) : null;
+  const archivedAt = row.archivedAt || null;
+  const archiveDaysRemaining = getArchiveDaysRemaining(archivedAt);
   return {
     id: row._id,
     name,
@@ -34,7 +47,8 @@ const mapConversation = (row, myId) => {
     lastMsg: row.lastMessage || 'No messages yet',
     time: formatConversationTime(row.lastMessageAt || row.updatedAt || row.createdAt),
     status: row.orderStatus || 'Linked chat',
-    archivedAt: row.archivedAt || null,
+    archivedAt,
+    archiveDaysRemaining,
     unreadCount: row.unreadCount || 0,
     isRiderAssigned: Boolean(row.isRiderAssigned),
     isRiderConversation: counterpartyRole === 'rider',
@@ -114,6 +128,9 @@ export default function Message() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let base = conversations;
+    if (showArchived) {
+      base = base.filter((c) => c.archivedAt);
+    }
     if (!showArchived) {
       if (user?.role === 'rider') {
         if (activeFilter === 'Customers') base = base.filter((c) => c.otherRole === 'customer');
@@ -432,6 +449,7 @@ export default function Message() {
                     {chat.orderCode} • {chat.status}
                     {chat.isRiderConversation && chat.isRiderAssigned ? ' • ASSIGNED TO YOUR ORDER' : ''}
                     {chat.archivedAt ? ' • ARCHIVED' : ''}
+                    {chat.archivedAt && chat.archiveDaysRemaining !== null ? ` • DELETES IN ${chat.archiveDaysRemaining} DAY${chat.archiveDaysRemaining === 1 ? '' : 'S'}` : ''}
                   </p>
                 </button>
               );
@@ -458,7 +476,12 @@ export default function Message() {
               </div>
               {selected.archivedAt && (
                 <div className="px-8 py-2 text-xs font-semibold text-amber-700 bg-amber-50 border-t border-amber-100 flex items-center justify-between gap-3">
-                  <span className="inline-flex items-center gap-1.5"><Archive size={14} /> Archived conversation</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Archive size={14} /> Archived conversation
+                    {selected.archiveDaysRemaining !== null
+                      ? ` • Deletes in ${selected.archiveDaysRemaining} day${selected.archiveDaysRemaining === 1 ? '' : 's'}`
+                      : ''}
+                  </span>
                   <button
                     type="button"
                     onClick={onDeleteConversation}

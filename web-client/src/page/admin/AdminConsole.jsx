@@ -87,6 +87,7 @@ const AdminConsole = () => {
     loadConfig();
   }, []);
 
+
   useEffect(() => {
     if (dateScope === "custom") return;
     setAppliedDateScope(dateScope);

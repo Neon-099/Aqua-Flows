@@ -32,6 +32,7 @@ import { env } from '../config/env.js';
 const PRICE_PER_GALLON = 15;
 const DELIVERY_FEE = 5;
 const GCASH_VAT_FEE = 3;
+const SYSTEM_AUTO_ASSIGN_USER = { _id: 'SYSTEM_AUTO_ASSIGN', role: USER_ROLE.STAFF };
 
 const isPayMongoIntentPaid = (status) => {
   const normalized = String(status || '').toLowerCase();
@@ -655,7 +656,6 @@ export const confirmOrder = async ({ user, orderId }) => {
       const gallons = Number(order.water_quantity || 0);
 
       if (user.role === USER_ROLE.STAFF) {
-        await ensureAnyActiveRiderHasCapacity(session, gallons);
         assertTransition(order.status, ORDER_STATUS.CONFIRMED);
         order.status = ORDER_STATUS.CONFIRMED;
         await order.save({ session });
@@ -707,6 +707,18 @@ export const confirmOrder = async ({ user, orderId }) => {
           customerId: order.customer_id,
           riderId: order.assigned_rider_id,
         });
+        return order;
+      }
+
+      if (user.role === USER_ROLE.STAFF) {
+        try {
+          const assigned = await autoAssignRider({ user, orderId });
+          return assigned?.order || order;
+        } catch (err) {
+          if (err?.message !== 'NO_AVAILABLE_RIDER') {
+            console.error(`[AUTO_ASSIGN] Failed after confirm for order ${orderId}: ${err?.message || err}`);
+          }
+        }
       }
       return order;
     } catch (err) {
@@ -732,7 +744,6 @@ export const autoAcceptPendingOrders = async ({ maxAgeSeconds = 60, batchSize = 
     .select('_id');
 
   let updated = 0;
-  let skippedNoCapacity = 0;
   let skippedChanged = 0;
   let failed = 0;
 
@@ -748,7 +759,6 @@ export const autoAcceptPendingOrders = async ({ maxAgeSeconds = 60, batchSize = 
         continue;
       }
 
-      await ensureAnyActiveRiderHasCapacity(session, order.water_quantity);
       assertTransition(order.status, ORDER_STATUS.CONFIRMED);
       order.status = ORDER_STATUS.CONFIRMED;
       order.auto_accepted = true;
@@ -760,13 +770,16 @@ export const autoAcceptPendingOrders = async ({ maxAgeSeconds = 60, batchSize = 
         order,
         status: ORDER_STATUS.CONFIRMED,
       });
+      try {
+        await autoAssignRider({ user: SYSTEM_AUTO_ASSIGN_USER, orderId: order._id });
+      } catch (err) {
+        if (err?.message !== 'NO_AVAILABLE_RIDER') {
+          console.error(`[AUTO_ASSIGN] Failed after auto-accept for order ${row._id}: ${err?.message || err}`);
+        }
+      }
       updated += 1;
     } catch (err) {
       await session.abortTransaction();
-      if (err?.message === 'NO_AVAILABLE_RIDER_CAPACITY') {
-        skippedNoCapacity += 1;
-        continue;
-      }
       failed += 1;
       console.error(`[AUTO_ACCEPT] Failed for order ${row._id}: ${err.message}`);
     } finally {
@@ -777,10 +790,50 @@ export const autoAcceptPendingOrders = async ({ maxAgeSeconds = 60, batchSize = 
   return {
     scanned: candidates.length,
     updated,
-    skippedNoCapacity,
     skippedChanged,
     failed,
     cutoff: cutoff.toISOString(),
+  };
+};
+
+export const autoAssignConfirmedOrders = async ({ batchSize = 100 } = {}) => {
+  const candidates = await Order.find({
+    status: ORDER_STATUS.CONFIRMED,
+    assigned_rider_id: null,
+  })
+    .sort({ updated_at: 1 })
+    .limit(Number(batchSize || 100))
+    .select('_id');
+
+  let assigned = 0;
+  let skippedNoCapacity = 0;
+  let skippedChanged = 0;
+  let failed = 0;
+
+  for (const row of candidates) {
+    try {
+      await autoAssignRider({ user: SYSTEM_AUTO_ASSIGN_USER, orderId: row._id });
+      assigned += 1;
+    } catch (err) {
+      if (err?.message === 'NO_AVAILABLE_RIDER' || err?.message === 'NO_AVAILABLE_RIDER_CAPACITY') {
+        skippedNoCapacity += 1;
+        continue;
+      }
+      if (err?.message === 'Order already assigned') {
+        skippedChanged += 1;
+        continue;
+      }
+      failed += 1;
+      console.error(`[AUTO_ASSIGN_SCAN] Failed for order ${row._id}: ${err?.message || err}`);
+    }
+  }
+
+  return {
+    scanned: candidates.length,
+    assigned,
+    skippedNoCapacity,
+    skippedChanged,
+    failed,
   };
 };
 
@@ -1002,9 +1055,9 @@ export const autoAssignRider = async({user, orderId, weights}) => {
 }
 
 const buildWeights = (weights) => ({
-  load: weights?.load ?? 0.5,
-  orders: weights?.orders ?? 0.4,
-  capacity: weights?.capacity ?? 0.1,
+  load: weights?.load ?? 0.0,
+  orders: weights?.orders ?? 0.0,
+  capacity: weights?.capacity ?? 1.0,
   distance: weights?.distance ?? 0.0,
 });
 
@@ -1029,17 +1082,10 @@ const getAutoAssignCandidates = async ({ session, gallons, limit = 3, weights })
     },
     {
       $addFields: {
-        score: {
-          $add: [
-            { $multiply: [w.load, { $divide: [1, { $add: ['$currentLoadGallons', 1] }] }] },
-            { $multiply: [w.orders, { $divide: [1, { $add: ['$activeOrdersCount', 1] }] }] },
-            { $multiply: [w.capacity, '$remainingCapacity'] },
-            { $multiply: [w.distance, 0] },
-          ],
-        },
+        score: { $multiply: [w.capacity, '$remainingCapacity'] },
       },
     },
-    { $sort: { score: -1, _id: 1 } },
+    { $sort: { remainingCapacity: -1, currentLoadGallons: 1, activeOrdersCount: 1, _id: 1 } },
     { $limit: Number(limit || 3) },
   ];
 
@@ -1065,8 +1111,8 @@ const getAutoAssignCandidates = async ({ session, gallons, limit = 3, weights })
       score: c.score || 0,
       reason:
         idx === 0
-          ? 'Best match: lowest load, fewest active orders, most remaining capacity.'
-          : 'Eligible rider based on capacity and current load.',
+          ? 'Best match: most remaining capacity.'
+          : 'Eligible rider based on remaining capacity.',
     };
   });
 };

@@ -6,7 +6,7 @@ import { env } from './config/env.js'
 import { initFirebaseAdmin } from './config/firebase.js'
 import http from 'http'
 import { createSocketServer } from './middlewares/index.js'
-import { autoAcceptPendingOrders } from './services/order.service.js'
+import { autoAcceptPendingOrders, autoAssignConfirmedOrders } from './services/order.service.js'
 import { startTaskWorker } from './utils/taskQueue.js'
 import { confirmOrder, assignRider, queueDispatch, dispatchOrder, riderStartDelivery, riderPickup } from './services/order.service.js';
 import { runChatArchiveMaintenance } from './services/chat.service.js';
@@ -20,8 +20,10 @@ const io = createSocketServer(httpServer)
 
 app.set('io', io);
 
-const AUTO_ACCEPT_INTERVAL_MS = 15000;
+const AUTO_ACCEPT_INTERVAL_MS = 2 * 60 * 1000;
 let autoAcceptRunning = false;
+const AUTO_ASSIGN_INTERVAL_MS = 3 * 60 * 1000;
+let autoAssignRunning = false;
 const CHAT_ARCHIVE_MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
 let chatArchiveMaintenanceRunning = false;
 
@@ -33,7 +35,7 @@ const runAutoAcceptTick = async () => {
     const stats = await autoAcceptPendingOrders({ maxAgeSeconds: 60, batchSize: 100 });
     if (stats.updated > 0 || stats.failed > 0) {
       console.log(
-        `[AUTO_ACCEPT] scanned=${stats.scanned} updated=${stats.updated} no_capacity=${stats.skippedNoCapacity} failed=${stats.failed}`
+        `[AUTO_ACCEPT] scanned=${stats.scanned} updated=${stats.updated} failed=${stats.failed}`
       );
     }
   } catch (err) {
@@ -55,11 +57,30 @@ const runChatArchiveMaintenanceTick = async () => {
   }
 };
 
+const runAutoAssignTick = async () => {
+  if (autoAssignRunning) return;
+  autoAssignRunning = true;
+  try {
+    const stats = await autoAssignConfirmedOrders({ batchSize: 100 });
+    if (stats.assigned > 0 || stats.failed > 0) {
+      console.log(
+        `[AUTO_ASSIGN] scanned=${stats.scanned} assigned=${stats.assigned} no_capacity=${stats.skippedNoCapacity} failed=${stats.failed}`
+      );
+    }
+  } catch (err) {
+    console.error(`[AUTO_ASSIGN] Tick failed: ${err.message}`);
+  } finally {
+    autoAssignRunning = false;
+  }
+};
+
 httpServer.listen(PORT,() => {
   console.log(`Server running in ${env.NODE_ENV} mode on port ${PORT}`)
   //IT RUN ONCE IMMEDIATELY: THEN KEEP SCANNING PENDING ORDERS EVERY 15S
   runAutoAcceptTick();
   setInterval(runAutoAcceptTick, AUTO_ACCEPT_INTERVAL_MS);
+  runAutoAssignTick();
+  setInterval(runAutoAssignTick, AUTO_ASSIGN_INTERVAL_MS);
   runChatArchiveMaintenanceTick();
   setInterval(runChatArchiveMaintenanceTick, CHAT_ARCHIVE_MAINTENANCE_INTERVAL_MS);
 

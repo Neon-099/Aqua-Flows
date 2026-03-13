@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { OrderStatus, RiderStatus } from '../../constants/staff.constants';
 import { apiRequest } from '../../utils/api';
 import { formatOrderId, getInitials } from '../../utils/staffFormatters';
@@ -367,6 +367,16 @@ const useStaffOrders = () => {
   const completedOrders = orders.filter((o) => o.status === OrderStatus.COMPLETED);
   const cancelledOrders = orders.filter((o) => o.status === OrderStatus.CANCELLED);
   const pendingOrdersCount = pendingOrders.length;
+  const AUTO_ACCEPT_SCAN_SECONDS = 2 * 30;
+  const AUTO_ASSIGN_SCAN_SECONDS = 3 * 30;
+  const [nextAutoAcceptScanAt, setNextAutoAcceptScanAt] = useState(
+    () => Date.now() + AUTO_ACCEPT_SCAN_SECONDS * 2000
+  );
+  const [autoAcceptRemaining, setAutoAcceptRemaining] = useState(AUTO_ACCEPT_SCAN_SECONDS);
+  const [nextAutoAssignScanAt, setNextAutoAssignScanAt] = useState(
+    () => Date.now() + AUTO_ASSIGN_SCAN_SECONDS * 2000
+  );
+  const [autoAssignRemaining, setAutoAssignRemaining] = useState(AUTO_ASSIGN_SCAN_SECONDS);
   const selectedAssignGallons = orders.reduce(
     (total, order) => (selectedAssignIds.has(order.id) ? total + order.gallons : total),
     0
@@ -563,6 +573,57 @@ const useStaffOrders = () => {
     }
   };
 
+  useEffect(() => {
+      const tick = () => {
+        const now = Date.now();
+        let diffSeconds = Math.ceil((nextAutoAcceptScanAt - now) / 1000);
+        if (diffSeconds <= 0) {
+          const nextAt = nextAutoAcceptScanAt + AUTO_ACCEPT_SCAN_SECONDS * 1000;
+          setNextAutoAcceptScanAt(nextAt);
+          diffSeconds = Math.ceil((nextAt - now) / 1000);
+        }
+        setAutoAcceptRemaining(Math.max(0, diffSeconds));
+      };
+  
+      tick();
+      const intervalId = setInterval(tick, 1000);
+      return () => clearInterval(intervalId);
+    }, [nextAutoAcceptScanAt]);
+  
+    useEffect(() => {
+      const tick = () => {
+        const now = Date.now();
+        let diffSeconds = Math.ceil((nextAutoAssignScanAt - now) / 1000);
+        if (diffSeconds <= 0) {
+          const nextAt = nextAutoAssignScanAt + AUTO_ASSIGN_SCAN_SECONDS * 1000;
+          setNextAutoAssignScanAt(nextAt);
+          diffSeconds = Math.ceil((nextAt - now) / 1000);
+        }
+        setAutoAssignRemaining(Math.max(0, diffSeconds));
+      };
+  
+      tick();
+      const intervalId = setInterval(tick, 1000);
+      return () => clearInterval(intervalId);
+    }, [nextAutoAssignScanAt]);
+  
+    const autoAcceptTimerLabel = useMemo(() => {
+      const minutes = Math.floor(autoAcceptRemaining / 60);
+      const seconds = autoAcceptRemaining % 60;
+      return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }, [autoAcceptRemaining]);
+  
+    const autoAssignTimerLabel = useMemo(() => {
+      const minutes = Math.floor(autoAssignRemaining / 60);
+      const seconds = autoAssignRemaining % 60;
+      return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }, [autoAssignRemaining]);
+  
+    const navButtonClass = (isActive) =>
+      isActive
+        ? 'flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all'
+        : 'flex items-center gap-2 bg-white/50 text-slate-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/80 transition-all';
+  
   return {
     ORDERS_PER_PAGE,
     autoAssignWeights: AUTO_ASSIGN_WEIGHTS,
@@ -616,6 +677,9 @@ const useStaffOrders = () => {
     handleAssignSelected,
     handleDispatchNowBulk,
     handleDispatchNow,
+    autoAcceptTimerLabel,
+    autoAssignTimerLabel,
+    navButtonClass
   };
 };
 
