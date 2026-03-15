@@ -63,6 +63,7 @@ app.get("/health", (req, res) => {
   res.status(200).json({ success: true, status: "ok" });
 });
 
+//MAIN ROUTES
 app.use("/api/v1/auth", router);
 app.use("/api/v1/orders", orderRouter);
 app.use("/api/v1/riders", riderRouter);
