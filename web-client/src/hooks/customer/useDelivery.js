@@ -233,6 +233,7 @@ const useDelivery = () => {
   };
 
   const riderName = selectedActiveOrder?.assigned_rider_name;
+  const riderPhone = selectedActiveOrder?.assigned_rider_phone;
   const initials = useMemo(() => {
     if (!riderName) return 'CF';
     return riderName
@@ -270,6 +271,7 @@ const useDelivery = () => {
     fmtDate,
     STATUS_LABEL,
     riderName,
+    riderPhone,
     orderQty,
     HISTORY_PER_PAGE,
     ACTIVE_ORDER_STATUSES,

@@ -37,6 +37,7 @@ const Delivery = () => {
     fmtDate,
     STATUS_LABEL,
     riderName,
+    riderPhone,
     DELIVERY_FEE,
     HISTORY_PER_PAGE,
     navigate,
@@ -193,6 +194,11 @@ const Delivery = () => {
                           <Truck size={16} />
                           {selectedActiveOrder.assigned_rider_name} • Active
                         </p>
+                        {riderPhone && (
+                          <p className="text-slate-500 text-sm font-semibold mt-1">
+                            Phone: {riderPhone}
+                          </p>
+                        )}
                         {etaText && (
                           <p className="text-slate-500 text-sm font-semibold mt-1 flex items-center gap-1">
                             <Clock size={14} />
@@ -202,6 +208,14 @@ const Delivery = () => {
                       </div>
                     </div>
                     <div className="flex gap-3">
+                      {riderPhone && (
+                        <a
+                          href={`tel:${riderPhone}`}
+                          className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-blue-200 rounded-2xl text-blue-700 font-bold hover:bg-blue-50 transition-all shadow-lg shadow-blue-100"
+                        >
+                          Call Rider
+                        </a>
+                      )}
                       <button 
                         onClick={() => navigate('/messages', {
                           state: {orderId: selectedActiveOrder?._id || latestActiveOrder?._id || ''}
@@ -213,6 +227,69 @@ const Delivery = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Order Details Section */}
+                <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-slate-50 border border-slate-100 rounded-[2rem] p-6 space-y-4">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Order Details</p>
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Delivery address</p>
+                      <p className="text-slate-700 font-semibold mt-1">
+                        {selectedActiveOrder.customer_address || user?.address || 'Address unavailable'}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Quantity</p>
+                        <p className="text-slate-700 font-semibold mt-1">{selectedActiveOrder.water_quantity} gallons</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Gallon type</p>
+                        <p className="text-slate-700 font-semibold mt-1">
+                          {selectedActiveOrder.gallon_type === 'SLIM' ? 'Slim gallon' : 'Round gallon'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Payment method</p>
+                        <p className="text-slate-700 font-semibold mt-1">
+                          {selectedActiveOrder.payment_method === 'GCASH' ? 'GCash' : 'Cash on Delivery'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Assigned rider</p>
+                        <p className="text-slate-700 font-semibold mt-1">
+                          {selectedActiveOrder.assigned_rider_name || 'Unassigned'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border border-slate-100 rounded-[2rem] p-6 shadow-sm">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Rider Contact</p>
+                    <div className="mt-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-lg font-black text-slate-800">
+                          {selectedActiveOrder.assigned_rider_name || 'Waiting for rider'}
+                        </p>
+                        <p className="text-sm text-slate-500 font-semibold mt-1">
+                          {riderPhone || 'Phone not available yet'}
+                        </p>
+                      </div>
+                      {riderPhone ? (
+                        <a
+                          href={`tel:${riderPhone}`}
+                          className="px-5 py-3 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all"
+                        >
+                          Call Rider
+                        </a>
+                      ) : (
+                        <span className="px-5 py-3 rounded-2xl bg-slate-100 text-slate-400 font-semibold">
+                          Call Unavailable
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
