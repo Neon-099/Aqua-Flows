@@ -542,7 +542,29 @@ export const getOrderById = async ({ user, orderId }) => {
 
   const payment = await Payment.findOne({ order_id: order._id });
 
-  return { order, rider, payment };
+  const customer = await Customer.findById(order.customer_id).select('_id user_id address');
+  const customerUser = customer?.user_id
+    ? await User.findById(customer.user_id).select('_id name address')
+    : null;
+
+  const riderUser = rider?.user_id
+    ? await User.findById(rider.user_id).select('_id name')
+    : null;
+
+  const orderData = typeof order?.toObject === 'function' ? order.toObject() : order;
+  orderData.customer_name = customerUser?.name || null;
+  orderData.customer_address = customer?.address || customerUser?.address || null;
+
+  const riderData = rider
+    ? {
+      _id: rider._id,
+      user_id: rider.user_id,
+      name: riderUser?.name || null,
+      phone: rider.phone || null,
+    }
+    : null;
+
+  return { order: orderData, rider: riderData, payment };
 };
 
 export const listOrdersForRider = async ({ user, riderId }) => {
