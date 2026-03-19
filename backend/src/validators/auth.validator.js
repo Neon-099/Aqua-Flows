@@ -7,6 +7,20 @@ export const validateRegister = (req, res, next) => {
     if (!email || !password || !name || !address || !phone) {
         return res.status(400).json({ success: false, message: 'Please provide email, password, name, address, and phone number' });
     }
+    const normalizedEmail = String(email).trim();
+    const normalizedName = String(name).trim();
+    if (normalizedName.length < 6 || normalizedName.length > 30) {
+        return res.status(400).json({
+            success: false,
+            message: 'Name must be between 6 and 30 characters',
+        });
+    }
+    if (normalizedEmail.length < 6 || normalizedEmail.length > 30) {
+        return res.status(400).json({
+            success: false,
+            message: 'Email must be between 6 and 30 characters',
+        });
+    }
     const strongPassword = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
     if (!strongPassword.test(password)) {
         return res.status(400).json({
@@ -28,5 +42,13 @@ export const validateLogin = (req, res, next) => {
     if (!email || !password) {
         return res.status(400).json({ success: false, message: 'Please provide email and password' });
     }
+    const normalizedEmail = String(email).trim();
+    if (normalizedEmail.length < 6 || normalizedEmail.length > 30) {
+        return res.status(400).json({ success: false, message: 'Email must be between 6 and 30 characters' });
+    }
+    if(password.length < 8 ){
+        return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+    }
+
     next();
 };

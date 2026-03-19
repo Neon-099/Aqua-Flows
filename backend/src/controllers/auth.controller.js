@@ -95,7 +95,7 @@ export const getMe = async (req, res, next) => {
         name: req.user.name,
         role: req.user.role,
         address: customer?.address,
-        phone: customer?.phone,
+        phone: req.user.role === 'rider' ? rider?.phone : customer?.phone,
         rider: rider
           ? {
               id: rider._id,
@@ -161,19 +161,33 @@ export const updateProfile = async (req, res, next) => {
       }
     }
 
-    if (name) user.name = name;
+    if (name) {
+      const normalizedName = String(name).trim();
+      if (normalizedName.length < 6 || normalizedName.length > 30) {
+        return res.status(400).json({ success: false, message: 'Name must be between 6 and 30 characters' });
+      }
+      user.name = normalizedName;
+    }
 
     await user.save();
 
-    if (address || phone) {
+    if (user.role === 'customer' && (address || phone)) {
       await Customer.findOneAndUpdate(
         { user_id: user._id },
         { $set: { ...(address ? { address } : {}), ...(phone ? { phone } : {}) } },
         { upsert: true }
       );
     }
+    if (user.role === 'rider' && phone) {
+      await Rider.findOneAndUpdate(
+        { user_id: user._id },
+        { $set: { phone } },
+        { upsert: true }
+      );
+    }
 
     const customer = await Customer.findOne({ user_id: user._id });
+    const rider = await Rider.findOne({ user_id: user._id });
 
     res.status(200).json({
       success: true,
@@ -182,7 +196,7 @@ export const updateProfile = async (req, res, next) => {
         email: user.email,
         name: user.name,
         address: customer?.address,
-        phone: customer?.phone,
+        phone: user.role === 'rider' ? rider?.phone : customer?.phone,
         role: user.role,
         createdAt: user.createdAt,
         created_at: user.created_at,

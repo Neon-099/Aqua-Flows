@@ -17,6 +17,12 @@ export const validateCreateUser = (req, res, next) => {
       message: 'Please provide email, password, name, and role',
     });
   }
+  if (name.length < 6 || name.length > 30) {
+    return res.status(400).json({ success: false, message: 'Name must be between 6 and 30 characters' });
+  }
+  if (email.length < 6 || email.length > 30) {
+    return res.status(400).json({ success: false, message: 'Email must be between 6 and 30 characters' });
+  }
   if (!allowedRoles.has(role)) {
     return res.status(400).json({ success: false, message: 'Invalid role' });
   }
@@ -24,6 +30,12 @@ export const validateCreateUser = (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: 'Please provide address and phone for customer accounts',
+    });
+  }
+  if (role === USER_ROLE.RIDER && (!phone || !String(phone).trim())) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please provide phone for rider accounts',
     });
   }
   if (role === USER_ROLE.RIDER && (maxCapacityGallons === undefined || maxCapacityGallons === null)) {
@@ -38,7 +50,7 @@ export const validateCreateUser = (req, res, next) => {
   if (role === USER_ROLE.RIDER && Number(maxCapacityGallons) < 1) {
     return res.status(400).json({ success: false, message: 'Max gallon capacity must be at least 1' });
   }
-  if (role === USER_ROLE.CUSTOMER && phone && !/^\d{11}$/.test(String(phone))) {
+  if ((role === USER_ROLE.CUSTOMER || role === USER_ROLE.RIDER) && phone && !/^\d{11}$/.test(String(phone))) {
     return res.status(400).json({ success: false, message: 'Phone number must be exactly 11 digits' });
   }
   if (password) {
@@ -70,6 +82,12 @@ export const validateUpdateUser = (req, res, next) => {
   }
   if (role && !allowedRoles.has(role)) {
     return res.status(400).json({ success: false, message: 'Invalid role' });
+  }
+  if (name !== undefined && (name.length < 6 || name.length > 30)) {
+    return res.status(400).json({ success: false, message: 'Name must be between 6 and 30 characters' });
+  }
+  if (email !== undefined && (email.length < 6 || email.length > 30)) {
+    return res.status(400).json({ success: false, message: 'Email must be between 6 and 30 characters' });
   }
   if (role === USER_ROLE.CUSTOMER && (!address && !phone && !email && !name && !password)) {
     return res.status(400).json({ success: false, message: 'No fields to update' });

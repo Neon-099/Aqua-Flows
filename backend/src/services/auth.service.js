@@ -6,6 +6,7 @@ import { sendEmail } from '../utils/sendEmail.js';
 import crypto from 'crypto';
 import { env } from '../config/env.js';
 import Customer from '../models/Customer.model.js';
+import Rider from '../models/Rider.model.js';
 import { seedDefaultConversationsForUser } from './chat.service.js';
 
 export const registerUser = async (email, password, name, address, phone) => {
@@ -59,12 +60,13 @@ export const loginUser = async (email, password) => {
     throw err;
   }
   const customer = await Customer.findOne({ user_id: user._id });
+  const rider = user.role === USER_ROLE.RIDER ? await Rider.findOne({ user_id: user._id }) : null;
   return {
     _id: user._id,
     email: user.email,
     name: user.name,
     address: customer?.address,
-    phone: customer?.phone,
+    phone: user.role === USER_ROLE.RIDER ? rider?.phone : customer?.phone,
     role: user.role,
     accessToken: generateAccessToken(user._id),
     refreshToken: generateRefreshToken(user._id),

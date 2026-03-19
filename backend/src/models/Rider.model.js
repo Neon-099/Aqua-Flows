@@ -17,6 +17,10 @@ const riderSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  phone: {
+    type: String,
+    trim: true,
+  },
   status: {
     type: String,
     enum: ['active', 'inactive'],

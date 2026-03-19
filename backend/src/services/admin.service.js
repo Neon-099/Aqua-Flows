@@ -83,10 +83,11 @@ export const listUsers = async ({
   const hydrated = items.map((user) => {
     const customer = customerMap.get(user._id);
     const rider = riderMap.get(user._id);
+    const isRider = user.role === USER_ROLE.RIDER;
     return {
       ...user.toObject(),
       address: customer?.address,
-      phone: customer?.phone,
+      phone: isRider ? rider?.phone : customer?.phone,
       maxCapacityGallons: rider?.maxCapacityGallons,
     };
   });
@@ -104,6 +105,7 @@ export const createUser = async (payload) => {
   const startedAt = Date.now();
   const mark = (step) => console.log(`[ADMIN][createUser][step] ${step} ${Date.now() - startedAt}ms`);
   const { address, phone, maxCapacityGallons, ...userPayload } = payload;
+  const normalizedPhone = phone !== undefined && phone !== null ? String(phone).trim() : undefined;
   const normalizedEmail = String(userPayload?.email || '').trim().toLowerCase();
   if (normalizedEmail) {
     const existing = await User.findOne({ email: normalizedEmail }).select('_id email role isArchived');
@@ -128,7 +130,7 @@ export const createUser = async (payload) => {
     await Customer.findOneAndUpdate(
       { user_id: user._id },
       {
-        $set: { ...(address ? { address } : {}), ...(phone ? { phone } : {}) },
+        $set: { ...(address ? { address } : {}), ...(normalizedPhone ? { phone: normalizedPhone } : {}) },
         $setOnInsert: { user_id: user._id },
       },
       { upsert: true }
@@ -143,7 +145,13 @@ export const createUser = async (payload) => {
     const capacity = Number(maxCapacityGallons);
     await Rider.findOneAndUpdate(
       { user_id: user._id },
-      { $set: { maxCapacityGallons: capacity }, $setOnInsert: { user_id: user._id } },
+      {
+        $set: {
+          maxCapacityGallons: capacity,
+          ...(normalizedPhone ? { phone: normalizedPhone } : {}),
+        },
+        $setOnInsert: { user_id: user._id },
+      },
       { upsert: true }
     );
     mark('synced rider profile');
@@ -176,7 +184,7 @@ export const createUser = async (payload) => {
   return {
     ...user.toObject(),
     address,
-    phone,
+    phone: normalizedPhone,
     maxCapacityGallons: user.role === USER_ROLE.RIDER ? maxCapacityGallons : undefined,
   };
 };
@@ -195,6 +203,7 @@ export const updateUser = async (id, payload) => {
   const previousRole = user.role;
 
   const { address, phone, maxCapacityGallons, ...rest } = payload;
+  const normalizedPhone = phone !== undefined && phone !== null ? String(phone).trim() : undefined;
   Object.entries(rest).forEach(([key, value]) => {
     if (value !== undefined) {
       user[key] = value;
@@ -211,7 +220,7 @@ export const updateUser = async (id, payload) => {
       {
         $set: {
           ...(address !== undefined ? { address } : {}),
-          ...(phone !== undefined ? { phone } : {}),
+          ...(normalizedPhone !== undefined ? { phone: normalizedPhone } : {}),
         },
         $setOnInsert: { user_id: user._id },
       },
@@ -224,7 +233,7 @@ export const updateUser = async (id, payload) => {
     ]);
     mark('synced customer role profiles');
   } else if (user.role === USER_ROLE.RIDER) {
-    const existingRider = await Rider.findOne({ user_id: user._id }).select('maxCapacityGallons');
+    const existingRider = await Rider.findOne({ user_id: user._id }).select('maxCapacityGallons phone');
     const resolvedCapacity =
       maxCapacityGallons !== undefined
         ? Number(maxCapacityGallons)
@@ -234,9 +243,13 @@ export const updateUser = async (id, payload) => {
       err.statusCode = 400;
       throw err;
     }
+    const riderUpdate = { maxCapacityGallons: resolvedCapacity };
+    if (normalizedPhone !== undefined) {
+      riderUpdate.phone = normalizedPhone;
+    }
     await Rider.findOneAndUpdate(
       { user_id: user._id },
-      { $set: { maxCapacityGallons: resolvedCapacity }, $setOnInsert: { user_id: user._id } },
+      { $set: riderUpdate, $setOnInsert: { user_id: user._id } },
       { upsert: true }
     );
     await Promise.all([
@@ -295,7 +308,7 @@ export const updateUser = async (id, payload) => {
   return {
     ...user.toObject(),
     address: customer?.address,
-    phone: customer?.phone,
+    phone: user.role === USER_ROLE.RIDER ? rider?.phone : customer?.phone,
     maxCapacityGallons: rider?.maxCapacityGallons,
     roleProfile: user.role === USER_ROLE.STAFF ? staff : user.role === USER_ROLE.ADMIN ? admin : user.role === USER_ROLE.RIDER ? rider : customer,
     roleChangedFrom: previousRole !== user.role ? previousRole : undefined,
