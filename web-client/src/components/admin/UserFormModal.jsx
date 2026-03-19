@@ -6,9 +6,11 @@ import { ADDRESS_OPTIONS } from "../../utils/addressOptions";
 const backendEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const baseSchema = z.object({
-  name: z.string().min(2, "Name is required"),
+  name: z.string().min(6, "Name must be at least 6 characters").max(30, "Name must be at most 30 characters"),
   email: z
     .string()
+    .min(6, "Email must be at least 6 characters")
+    .max(30, "Email must be at most 30 characters")
     .email("Enter a valid email")
     .regex(backendEmailRegex, "Please provide a valid email"),
   phone: z.string().optional(),
@@ -27,7 +29,14 @@ const withRoleRules = (schema) =>
       if (!data.address || !data.address.trim()) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Address is required", path: ["address"] });
       }
-      if (data.phone && !/^\d{11}$/.test(String(data.phone).trim())) {
+    }
+    if (data.role === "rider") {
+      if (!data.phone || !data.phone.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Phone is required", path: ["phone"] });
+      }
+    }
+    if ((data.role === "customer" || data.role === "rider") && data.phone) {
+      if (!/^\d{11}$/.test(String(data.phone).trim())) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: "Phone number must be exactly 11 digits",
@@ -156,8 +165,10 @@ const UserFormModal = ({
       setForm((prev) => {
         const next = { ...prev, role: value };
         if (value !== "customer") {
-          next.phone = "";
           next.address = "";
+        }
+        if (value === "admin" || value === "staff") {
+          next.phone = "";
         }
         if (value !== "rider") {
           next.maxCapacityGallons = "";
@@ -196,6 +207,9 @@ const UserFormModal = ({
       ...(result.data.password ? { password: result.data.password } : {}),
       ...(result.data.role === "customer"
         ? { phone: result.data.phone?.trim(), address: result.data.address?.trim() }
+        : {}),
+      ...(result.data.role === "rider"
+        ? { phone: result.data.phone?.trim() }
         : {}),
       ...(result.data.role === "rider"
         ? { maxCapacityGallons: Number(result.data.maxCapacityGallons) }
@@ -249,8 +263,13 @@ const UserFormModal = ({
               <input
                 value={form.name}
                 onChange={(e) => handleChange("name", e.target.value)}
+                minLength={6}
+                maxLength={30}
                 className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
+              <p className={`mt-1 text-xs ${errors.name ? "text-rose-600" : "text-slate-400"}`}>
+                {errors.name ? "Name must be 6–30 characters" : "6–30 characters"}
+              </p>
               {errors.name && <p className="mt-1 text-xs text-red-600">{errors.name}</p>}
             </div>
             <div>
@@ -274,12 +293,17 @@ const UserFormModal = ({
             <input
               value={form.email}
               onChange={(e) => handleChange("email", e.target.value)}
+              minLength={6}
+              maxLength={30}
               className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
             />
+            <p className={`mt-1 text-xs ${errors.email ? "text-rose-600" : "text-slate-400"}`}>
+              {errors.email ? "Email must be 6–30 characters" : "6–30 characters"}
+            </p>
             {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
           </div>
 
-          {form.role === "customer" && (
+          {(form.role === "customer" || form.role === "rider") && (
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500">Phone</label>
@@ -294,25 +318,27 @@ const UserFormModal = ({
                 />
                 {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
               </div>
-              <div>
-                <label className="text-xs font-semibold uppercase text-slate-500">Address</label>
-                <select
-                  value={form.address}
-                  onChange={(e) => handleChange("address", e.target.value)}
-                  className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                >
-                  <option value="">Select your barangay/address option</option>
-                  {!hasSelectedAddressOption && form.address ? (
-                    <option value={form.address}>{form.address}</option>
-                  ) : null}
-                  {ADDRESS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                {errors.address && <p className="mt-1 text-xs text-red-600">{errors.address}</p>}
-              </div>
+              {form.role === "customer" && (
+                <div>
+                  <label className="text-xs font-semibold uppercase text-slate-500">Address</label>
+                  <select
+                    value={form.address}
+                    onChange={(e) => handleChange("address", e.target.value)}
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">Select your barangay/address option</option>
+                    {!hasSelectedAddressOption && form.address ? (
+                      <option value={form.address}>{form.address}</option>
+                    ) : null}
+                    {ADDRESS_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.address && <p className="mt-1 text-xs text-red-600">{errors.address}</p>}
+                </div>
+              )}
             </div>
           )}
 

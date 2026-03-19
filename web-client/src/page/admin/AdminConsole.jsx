@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import ToastStack from "../../components/admin/ToastStack";
 import AdminDashboard from "./AdminDashboard";
 import { useAuth } from "../../contexts/AuthProvider";
+import useDebouncedValue from "../../hooks/useDebouncedValue";
 import {
   cancelAdminOrder,
   fetchAdminConfig,
@@ -60,6 +61,7 @@ const AdminConsole = () => {
   const [appliedDateFrom, setAppliedDateFrom] = useState("");
   const [appliedDateTo, setAppliedDateTo] = useState("");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [overview, setOverview] = useState(null);
   const [orders, setOrders] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -101,10 +103,10 @@ const AdminConsole = () => {
       dateScope: appliedDateScope,
       dateFrom: appliedDateScope === "custom" ? appliedDateFrom : undefined,
       dateTo: appliedDateScope === "custom" ? appliedDateTo : undefined,
-      search: search.trim(),
+      search: debouncedSearch.trim(),
       limit: 50,
     }),
-    [tz, appliedDateScope, appliedDateFrom, appliedDateTo, search]
+    [tz, appliedDateScope, appliedDateFrom, appliedDateTo, debouncedSearch]
   );
 
   useEffect(() => {

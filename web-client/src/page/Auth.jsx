@@ -38,6 +38,11 @@ const Auth = () => {
     handleResetPassword
   } = useAuthForm();
 
+  const nameLength = formData.name.trim().length;
+  const emailLength = formData.email.trim().length;
+  const showNameLengthWarning = activeTab === 'signup' && nameLength > 0 && (nameLength < 6 || nameLength > 30);
+  const showEmailLengthWarning = emailLength > 0 && (emailLength < 6 || emailLength > 30);
+
   return (
     <div className="min-h-screen w-screen font-sans text-slate-900 bg-white m-0 p-0 flex">
         
@@ -142,9 +147,14 @@ const Auth = () => {
                   value={formData.name}
                   onChange={handleInputChange}
                   placeholder="Full Name"
+                  minLength={6}
+                  maxLength={30}
                   className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
                   required={activeTab === 'signup'}
                 />
+                <p className={`mt-2 text-xs font-semibold ${showNameLengthWarning ? 'text-rose-600' : 'text-slate-400'}`}>
+                  {showNameLengthWarning ? 'Name must be 6–30 characters' : '6–30 characters'}
+                </p>
               </div>
             )}
 
@@ -159,9 +169,14 @@ const Auth = () => {
                 value={formData.email}
                 onChange={handleInputChange}
                 placeholder="name@email.com"
+                minLength={6}
+                maxLength={30}
                 className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
                 required
               />
+              <p className={`mt-2 text-xs font-semibold ${showEmailLengthWarning ? 'text-rose-600' : 'text-slate-400'}`}>
+                {showEmailLengthWarning ? 'Email must be 6–30 characters' : '6–30 characters'}
+              </p>
             </div>
 
             {/* Password */}

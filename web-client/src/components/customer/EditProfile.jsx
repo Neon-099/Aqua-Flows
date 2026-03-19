@@ -60,6 +60,9 @@ const EditProfile = ({ isOpen, onClose }) => {
     );
   }, [formData, user?.name, user?.phone, user?.address]);
 
+  const nameLength = formData.name.trim().length;
+  const showNameLengthWarning = nameLength > 0 && (nameLength < 6 || nameLength > 30);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === 'phone') {
@@ -88,6 +91,10 @@ const EditProfile = ({ isOpen, onClose }) => {
     }
     if (formData.phone && !digitsOnly.test(formData.phone)) {
       setError('Phone number must contain only digits.');
+      return;
+    }
+    if (formData.name && (formData.name.trim().length < 6 || formData.name.trim().length > 30)) {
+      setError('Name must be between 6 and 30 characters.');
       return;
     }
 
@@ -163,7 +170,7 @@ const EditProfile = ({ isOpen, onClose }) => {
 
           <div className="grid md:grid-cols-2 gap-4">
             <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+              <div className="absolute left-4 top-1/3 -translate-y-1/2 text-slate-400">
                 <User2 size={18} />
               </div>
               <input
@@ -172,13 +179,18 @@ const EditProfile = ({ isOpen, onClose }) => {
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="Full name"
+                minLength={6}
+                maxLength={30}
                 className="w-full pl-11 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium"
                 required
               />
+              <p className={`mt-2 text-xs font-semibold ${showNameLengthWarning ? 'text-rose-600' : 'text-slate-400'}`}>
+                {showNameLengthWarning ? 'Name must be 6–30 characters' : '6–30 characters'}
+              </p>
             </div>
 
             <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+              <div className="absolute left-4 top-1/3 -translate-y-1/2 text-slate-400">
                 <Mail size={18} />
               </div>
               <input

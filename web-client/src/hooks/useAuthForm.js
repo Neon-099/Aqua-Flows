@@ -74,6 +74,18 @@ const useAuthForm = () => {
 
       try {
         if (activeTab === 'signup') {
+          const normalizedName = formData.name.trim();
+          const normalizedEmail = formData.email.trim();
+          if (normalizedName.length < 6 || normalizedName.length > 30) {
+            setError('Name must be between 6 and 30 characters.');
+            setLoading(false);
+            return;
+          }
+          if (normalizedEmail.length < 6 || normalizedEmail.length > 30) {
+            setError('Email must be between 6 and 30 characters.');
+            setLoading(false);
+            return;
+          }
           if (formData.password !== formData.confirmPassword) {
             setError('Passwords do not match');
             setLoading(false);

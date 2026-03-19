@@ -113,7 +113,8 @@ const getProgressSteps = (status) => {
     if(status === 'PENDING') return 0
     if (status === 'CONFIRMED') return 1;
     if (status === 'PICKED_UP') return 2;
-    if (status === 'OUT_FOR_DELIVERY') return 3;
+    if (status === 'GALLON_PICKUP') return 3
+    if (status === 'OUT_FOR_DELIVERY') return 4;
     if (status === 'PENDING_PAYMENT') return 5;
     if (status === 'COMPLETED') return 6;
     return 0;

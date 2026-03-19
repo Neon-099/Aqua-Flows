@@ -19,6 +19,7 @@ import { createChatSocket, emitWithAck } from '../../utils/socket';
 import { formatConversationTime, formatMessageTime } from '../../utils/messagingFormatters';
 import StaffProfileModal from '../../components/staff/StaffProfileModal';
 import StaffNotificationBell from '../../components/staff/StaffNotificationBell';
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 
 const title = (v) => (v ? `${v[0].toUpperCase()}${v.slice(1)}` : 'User');
 const short = (id) => String(id || '').slice(0, 6);
@@ -84,6 +85,7 @@ const StaffMessages = () => {
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [error, setError] = useState('');
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -103,7 +105,7 @@ const StaffMessages = () => {
   );
 
   const filteredConversations = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     let base = conversations;
 
     if (activeFilter === 'Unread') base = base.filter((conversation) => conversation.unread > 0);
@@ -117,7 +119,7 @@ const StaffMessages = () => {
         conversation.orderTag.toLowerCase().includes(q) ||
         conversation.preview.toLowerCase().includes(q)
     );
-  }, [conversations, search, activeFilter]);
+  }, [conversations, debouncedSearch, activeFilter]);
 
   const navButtonClass = (isActive) =>
     isActive

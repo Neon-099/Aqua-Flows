@@ -8,6 +8,7 @@ import { formatConversationTime, formatMessageTime } from '../../utils/messaging
 import { Skeleton, SkeletonGroup } from '../../components/WireframeSkeleton';
 
 import Header from '../../components/Header'
+import useDebouncedValue from '../../hooks/useDebouncedValue';
 
 const title = (v) => (v ? `${v[0].toUpperCase()}${v.slice(1)}` : 'User');
 const short = (id) => String(id || '').slice(0, 8);
@@ -114,6 +115,7 @@ export default function Message() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [error, setError] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [showArchived, setShowArchived] = useState(false);
@@ -126,7 +128,7 @@ export default function Message() {
   const selected = useMemo(() => conversations.find((c) => c.id === selectedId) || null, [conversations, selectedId]);
   const unread = useMemo(() => conversations.reduce((a, c) => a + (c.unreadCount || 0), 0), [conversations]);
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     let base = conversations;
     if (showArchived) {
       base = base.filter((c) => c.archivedAt);
@@ -142,7 +144,7 @@ export default function Message() {
     }
     if (!q) return base;
     return base.filter((c) => c.name.toLowerCase().includes(q) || c.orderCode.toLowerCase().includes(q) || c.lastMsg.toLowerCase().includes(q));
-  }, [conversations, search, activeFilter, user?.role, showArchived]);
+  }, [conversations, debouncedSearch, activeFilter, user?.role, showArchived]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
