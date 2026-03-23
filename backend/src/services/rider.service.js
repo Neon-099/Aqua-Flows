@@ -2,6 +2,7 @@
 import Rider from '../models/Rider.model.js';
 import User from '../models/User.model.js';
 import { USER_ROLE } from '../constants/order.constants.js';
+import { RIDER_HEARTBEAT_TTL_MS } from '../constants/rider.constants.js';
 
 const throwError = (status, message) => {
     const err = new Error(message)
@@ -32,7 +33,8 @@ export  const createRider = async ({ user, payload}) => {
   const rider = await Rider.create({
     user_id,
     vehicle_type,
-    is_available: true,
+    status: 'active',
+    last_seen_at: new Date(),
   });
 
   return rider;
@@ -70,8 +72,49 @@ export const updateRiderAvailability = async ({ user, riderId, is_available }) =
   const rider = await Rider.findById(riderId);
   if (!rider) throwError(404, 'Rider not found');
 
-  rider.is_available = Boolean(is_available);
+  const nextActive = Boolean(is_available);
+  rider.status = nextActive ? 'active' : 'inactive';
+  if (nextActive) {
+    rider.last_seen_at = new Date();
+  }
   await rider.save();
 
   return rider;
+};
+
+export const heartbeatRider = async ({ user, riderId }) => {
+  if (![USER_ROLE.RIDER, USER_ROLE.ADMIN, USER_ROLE.STAFF].includes(user.role)) {
+    throwError(403, 'Not authorized');
+  }
+
+  let rider = null;
+  if (user.role === USER_ROLE.RIDER) {
+    rider = await Rider.findOne({ user_id: user._id });
+  } else if (riderId) {
+    rider = await Rider.findById(riderId);
+  }
+
+  if (!rider) throwError(404, 'Rider not found');
+
+  rider.status = 'active';
+  rider.last_seen_at = new Date();
+  await rider.save();
+
+  return rider;
+};
+
+export const markInactiveRiders = async ({ cutoff } = {}) => {
+  const threshold = cutoff || new Date(Date.now() - RIDER_HEARTBEAT_TTL_MS);
+  const result = await Rider.updateMany(
+    {
+      status: 'active',
+      $or: [
+        { last_seen_at: { $lt: threshold } },
+        { last_seen_at: null },
+      ],
+    },
+    { $set: { status: 'inactive' } }
+  );
+
+  return { matched: result.matchedCount || 0, updated: result.modifiedCount || 0 };
 };

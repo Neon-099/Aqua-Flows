@@ -13,6 +13,8 @@ import {
   normalizeChatRole,
 } from './chat.authz.service.js';
 import { ORDER_STATUS } from '../constants/order.constants.js';
+import { createMessageNotificationForUser } from './notification.service.js';
+import { sendPushToUser } from './fcm.service.js';
 
 const throwError = (statusCode, message) => {
   const err = new Error(message);
@@ -126,6 +128,34 @@ export const sendMessage = async ({ senderUser, conversationId, receiverId, orde
     { _id: conversation._id },
     { $set: { lastMessage: saved.message, lastMessageAt: saved.timestamp } }
   );
+
+  try {
+    await createMessageNotificationForUser({
+      receiverUser,
+      senderUser,
+      conversation,
+      message: saved.message,
+    });
+  } catch (err) {
+    debugChat('message-notification:failed', err?.message || String(err));
+  }
+
+  if (String(receiverUser?.role || '').toLowerCase() === 'rider') {
+    try {
+      await sendPushToUser({
+        userId: receiverUser._id,
+        title: senderUser?.name || 'New message',
+        body: saved.message,
+        data: {
+          type: 'message',
+          conversationId: String(conversation._id),
+          orderId: conversation?.orderId ? String(conversation.orderId) : '',
+        },
+      });
+    } catch (err) {
+      debugChat('message-push:failed', err?.message || String(err));
+    }
+  }
 
   return { conversation, saved, receiverUser };
 };
@@ -448,6 +478,10 @@ const enrichConversationsForUser = async ({ userId, conversations }) => {
 
   const userById = new Map(users.map((u) => [u._id, u]));
   const orderById = new Map(orders.map((o) => [o._id, o]));
+  const riderRows = await Rider.find({
+    _id: { $in: orders.map((o) => o.assigned_rider_id).filter(Boolean) },
+  }).select('_id user_id');
+  const riderUserByRiderId = new Map(riderRows.map((r) => [r._id, r.user_id]));
 
   const mapped = conversations.map((row) => {
     const lastReadAt =
@@ -476,23 +510,35 @@ const enrichConversationsForUser = async ({ userId, conversations }) => {
       return null;
     }
     const order = row.orderId ? orderById.get(row.orderId) : null;
+    const riderParticipant = participants.find((p) => p.role === 'rider') || null;
+    const assignedRiderUserId = order?.assigned_rider_id
+      ? riderUserByRiderId.get(order.assigned_rider_id)
+      : null;
+    const riderMatchesOrder = Boolean(
+      riderParticipant && assignedRiderUserId && riderParticipant.userId === assignedRiderUserId
+    );
 
     const withMeta = row.toObject();
     withMeta.participants = participants;
     withMeta.unreadCount = unreadCount;
-    withMeta.orderCode = order?.order_code || null;
-    withMeta.order_code = order?.order_code || null;
-    withMeta.orderStatus = order?.status || null;
-    withMeta.isRiderAssigned = Boolean(order?.assigned_rider_id);
+    withMeta.orderCode = riderMatchesOrder ? order?.order_code || null : null;
+    withMeta.order_code = riderMatchesOrder ? order?.order_code || null : null;
+    withMeta.orderStatus = riderMatchesOrder ? order?.status || null : null;
+    withMeta.isRiderAssigned = riderMatchesOrder;
     withMeta.counterpartyRole = otherRole;
-    withMeta.counterpartyLabel = deriveCounterpartyLabel({ me: userById.get(userId), other, order });
+    withMeta.counterpartyLabel = deriveCounterpartyLabel({
+      me: userById.get(userId),
+      other,
+      order,
+      isRiderAssigned: riderMatchesOrder,
+    });
     return withMeta;
   }).filter(Boolean);
   debugChat('enrich:complete', { userId, input: conversations.length, output: mapped.length });
   return mapped;
 };
 
-const deriveCounterpartyLabel = ({ me, other, order }) => {
+const deriveCounterpartyLabel = ({ me, other, order, isRiderAssigned }) => {
   if (!me || !other) return null;
 
   const meRole = normalizeChatRole(me.role);
@@ -500,7 +546,7 @@ const deriveCounterpartyLabel = ({ me, other, order }) => {
 
   if (meRole === 'customer' && otherRole === 'staff') return 'Staff Support';
   if (meRole === 'customer' && otherRole === 'rider') {
-    return order?.assigned_rider_id ? 'Assigned Rider' : 'Rider';
+    return isRiderAssigned ? 'Assigned Rider' : 'Rider';
   }
   if (meRole === 'rider' && otherRole === 'customer') return 'Order Customer';
   if (meRole === 'staff' && otherRole === 'customer') return 'Customer';

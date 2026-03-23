@@ -28,11 +28,46 @@ import {
 } from './paymongo.service.js';
 import { computeEtaFromAddress } from '../utils/eta.js';
 import { env } from '../config/env.js';
+import { RIDER_HEARTBEAT_TTL_MS } from '../constants/rider.constants.js';
 
 const PRICE_PER_GALLON = 15;
 const DELIVERY_FEE = 5;
 const GCASH_VAT_FEE = 3;
 const SYSTEM_AUTO_ASSIGN_USER = { _id: 'SYSTEM_AUTO_ASSIGN', role: USER_ROLE.STAFF };
+const riderFreshnessCutoff = () => new Date(Date.now() - RIDER_HEARTBEAT_TTL_MS);
+
+const isRiderActiveAndFresh = (rider) => {
+  if (!rider) return false;
+  if (rider.status !== 'active') return false;
+  if (!rider.last_seen_at) return false;
+  return new Date(rider.last_seen_at).getTime() >= Date.now() - RIDER_HEARTBEAT_TTL_MS;
+};
+
+const ensureRiderActiveAndFresh = async (session, riderId) => {
+  if (!riderId) throwError(400, 'Missing rider id');
+  const query = Rider.findOne({
+    _id: riderId,
+    status: 'active',
+    last_seen_at: { $gte: riderFreshnessCutoff() },
+  });
+  if (session) query.session(session);
+  const rider = await query;
+  if (!rider) throwError(409, 'RIDER_INACTIVE');
+  return rider;
+};
+
+const requireCustomerPhoneForGcash = async (user) => {
+  if (!user?._id) throwError(400, 'Missing user');
+  const customer = await Customer.findOne({ user_id: user._id }).select('phone');
+  if (!customer?.phone) {
+    throwError(400, 'Phone number is required for GCash payments. Please update your profile.');
+  }
+  const normalized = String(customer.phone).trim();
+  if (!/^\d{11}$/.test(normalized)) {
+    throwError(400, 'Phone number must be exactly 11 digits for GCash payments.');
+  }
+  return normalized;
+};
 
 const isPayMongoIntentPaid = (status) => {
   const normalized = String(status || '').toLowerCase();
@@ -66,6 +101,7 @@ const ensureAnyActiveRiderHasCapacity = async (session, gallons) => {
   const neededGallons = Number(gallons || 0);
   const exists = await Rider.exists({
     status: 'active',
+    last_seen_at: { $gte: riderFreshnessCutoff() },
     $expr: {
       $gte: [
         { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
@@ -85,6 +121,7 @@ const reserveRiderCapacity = async (session, riderId, gallons) => {
     {
       _id: riderId,
       status: 'active',
+      last_seen_at: { $gte: riderFreshnessCutoff() },
       $expr: {
         $gte: [
           { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
@@ -142,7 +179,7 @@ const enrichOrdersWithProfiles = async (orders) => {
 
   const [customers, riders] = await Promise.all([
     Customer.find({ _id: { $in: customerIds } }).select('_id user_id address'),
-    Rider.find({ _id: { $in: riderIds } }).select('_id user_id'),
+    Rider.find({ _id: { $in: riderIds } }).select('_id user_id phone'),
   ]);
 
   const customerById = new Map(customers.map((c) => [c._id, c]));
@@ -169,6 +206,7 @@ const enrichOrdersWithProfiles = async (orders) => {
       customer_address: customer?.address || customerUser?.address || null,
       assigned_rider_name: riderUser?.name || null,
       assigned_rider_user_id: riderUser?._id || null,
+      assigned_rider_phone: rider?.phone || null,
     };
   });
 };
@@ -269,6 +307,7 @@ export const createOrder = async ({ user, payload }) => {
 
   let paidIntent = null;
   if (normalizedPaymentMethod === PAYMENT_METHOD.GCASH) {
+    await requireCustomerPhoneForGcash(user);
     if (!gcash_payment_intent_id) {
       throwError(400, 'gcash_payment_intent_id is required for GCASH orders');
     }
@@ -385,6 +424,8 @@ export const createGcashPreparation = async ({ user, payload }) => {
   if (user.role !== USER_ROLE.CUSTOMER && user.role !== USER_ROLE.USER) {
     throwError(403, 'Only customers can prepare GCASH payments');
   }
+
+  await requireCustomerPhoneForGcash(user);
 
   const subtotal = quantity * PRICE_PER_GALLON;
   const expectedTotal = Number((subtotal + DELIVERY_FEE + GCASH_VAT_FEE).toFixed(2));
@@ -692,6 +733,7 @@ export const confirmOrder = async ({ user, orderId }) => {
         assertTransition(order.status, ORDER_STATUS.CONFIRMED);
         const resolvedRiderId = await resolveRiderId(user);
         if (!resolvedRiderId) throwError(400, 'Missing rider id');
+        await ensureRiderActiveAndFresh(session, resolvedRiderId);
         if (order.assigned_rider_id && order.assigned_rider_id !== resolvedRiderId) {
           throwError(409, 'Order already assigned to another rider');
         }
@@ -947,6 +989,9 @@ export const assignRider = async ({ user, orderId, riderId }) => {
 
   const rider = await Rider.findById(riderId);
   if (!rider) throwError(404, 'Rider not found');
+  if (!isRiderActiveAndFresh(rider)) {
+    throwError(409, 'RIDER_INACTIVE');
+  }
 
   const session = await mongoose.startSession();
   try {
@@ -1085,10 +1130,12 @@ const buildWeights = (weights) => ({
 
 const getAutoAssignCandidates = async ({ session, gallons, limit = 3, weights }) => {
   const w = buildWeights(weights);
+  const freshnessCutoff = riderFreshnessCutoff();
   const pipeline = [
     {
       $match: {
         status: 'active',
+        last_seen_at: { $gte: freshnessCutoff },
         $expr: {
           $gte: [
             { $subtract: ['$maxCapacityGallons', '$currentLoadGallons'] },
@@ -1229,18 +1276,6 @@ const sendOrderStatusPush = async ({ order, status }) => {
       data,
     });
   }
-
-  if (order.assigned_rider_id) {
-    const rider = await Rider.findById(order.assigned_rider_id).select('_id user_id');
-    if (rider?.user_id) {
-      await sendPushToUser({
-        userId: rider.user_id,
-        title: content.title,
-        body: content.body,
-        data,
-      });
-    }
-  }
 };
 
 
@@ -1264,9 +1299,6 @@ export const riderStartDelivery = async ({ user, orderId }) => {
 
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
-    order.dispatch_queued_at = null;
-    order.dispatch_after_minutes = null;
-    order.dispatch_scheduled_for = null;
     await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
@@ -1338,34 +1370,6 @@ export const riderBulkStartDelivery = async ({ user, orderIds }) => {
   };
 };
 
-export const queueDispatch = async ({ user, orderId, minutes }) => {
-  if (user.role !== USER_ROLE.STAFF) {
-    throwError(403, 'Only staff can queue dispatch');
-  }
-
-  const order = await Order.findById(orderId);
-  if (!order) throwError(404, 'Order not found');
-
-  if (order.status !== ORDER_STATUS.PICKED_UP) {
-    throwError(400, 'Order must be picked up before dispatch');
-  }
-
-  const delayMinutes = Number(minutes);
-  if (!Number.isFinite(delayMinutes) || delayMinutes <= 0) {
-    throwError(400, 'Invalid dispatch delay');
-  }
-
-  const now = new Date();
-  const scheduledFor = new Date(now.getTime() + delayMinutes * 60 * 1000);
-
-  order.dispatch_queued_at = now;
-  order.dispatch_after_minutes = delayMinutes;
-  order.dispatch_scheduled_for = scheduledFor;
-  await order.save();
-
-  return order;
-};
-
 export const dispatchOrder = async ({ user, orderId }) => {
   if (user.role !== USER_ROLE.STAFF) {
     throwError(403, 'Only staff can dispatch');
@@ -1385,9 +1389,6 @@ export const dispatchOrder = async ({ user, orderId }) => {
     assertTransition(order.status, ORDER_STATUS.OUT_FOR_DELIVERY);
     order.status = ORDER_STATUS.OUT_FOR_DELIVERY;
     order.dispatched_at = new Date();
-    order.dispatch_queued_at = null;
-    order.dispatch_after_minutes = null;
-    order.dispatch_scheduled_for = null;
     await applyEtaToOrder(session, order, ORDER_STATUS.OUT_FOR_DELIVERY);
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.OUT_FOR_DELIVERY, user._id);
@@ -1427,9 +1428,6 @@ export const riderMarkDelivered = async ({ user, orderId }) => {
     await releaseRiderCapacity(session, resolvedRiderId, order.water_quantity);
     assertTransition(order.status, ORDER_STATUS.DELIVERED);
     order.status = ORDER_STATUS.DELIVERED;
-    order.dispatch_queued_at = null;
-    order.dispatch_after_minutes = null;
-    order.dispatch_scheduled_for = null;
     await order.save({ session });
     await addHistory(session, order._id, ORDER_STATUS.DELIVERED, user._id);
     await createOrderNotificationForOrder({

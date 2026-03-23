@@ -8,7 +8,9 @@ import http from 'http'
 import { createSocketServer } from './middlewares/index.js'
 import { autoAcceptPendingOrders, autoAssignConfirmedOrders } from './services/order.service.js'
 import { startTaskWorker } from './utils/taskQueue.js'
-import { confirmOrder, assignRider, queueDispatch, dispatchOrder, riderStartDelivery, riderPickup } from './services/order.service.js';
+import { confirmOrder, assignRider, dispatchOrder, riderStartDelivery, riderPickup } from './services/order.service.js';
+import { markInactiveRiders } from './services/rider.service.js';
+import { RIDER_HEARTBEAT_TTL_MS, RIDER_HEARTBEAT_SWEEP_MS } from './constants/rider.constants.js';
 import { runChatArchiveMaintenance } from './services/chat.service.js';
 
 connectDB();
@@ -26,6 +28,7 @@ const AUTO_ASSIGN_INTERVAL_MS = 3 * 60 * 1000;
 let autoAssignRunning = false;
 const CHAT_ARCHIVE_MAINTENANCE_INTERVAL_MS = 60 * 60 * 1000;
 let chatArchiveMaintenanceRunning = false;
+let riderPresenceSweepRunning = false;
 
 //AUTO ACCEPT ORDER
 const runAutoAcceptTick = async () => {
@@ -74,6 +77,22 @@ const runAutoAssignTick = async () => {
   }
 };
 
+const runRiderPresenceSweep = async () => {
+  if (riderPresenceSweepRunning) return;
+  riderPresenceSweepRunning = true;
+  try {
+    const cutoff = new Date(Date.now() - RIDER_HEARTBEAT_TTL_MS);
+    const stats = await markInactiveRiders({ cutoff });
+    if (stats.updated > 0) {
+      console.log(`[RIDER_PRESENCE] inactive=${stats.updated}`);
+    }
+  } catch (err) {
+    console.error(`[RIDER_PRESENCE] Sweep failed: ${err.message}`);
+  } finally {
+    riderPresenceSweepRunning = false;
+  }
+};
+
 httpServer.listen(PORT,() => {
   console.log(`Server running in ${env.NODE_ENV} mode on port ${PORT}`)
   //IT RUN ONCE IMMEDIATELY: THEN KEEP SCANNING PENDING ORDERS EVERY 15S
@@ -83,12 +102,13 @@ httpServer.listen(PORT,() => {
   setInterval(runAutoAssignTick, AUTO_ASSIGN_INTERVAL_MS);
   runChatArchiveMaintenanceTick();
   setInterval(runChatArchiveMaintenanceTick, CHAT_ARCHIVE_MAINTENANCE_INTERVAL_MS);
+  runRiderPresenceSweep();
+  setInterval(runRiderPresenceSweep, RIDER_HEARTBEAT_SWEEP_MS);
 
   //APPLY TASK WORKER
   startTaskWorker( {
     confirmOrder: async (job) => confirmOrder(job.payload),
     assignRider : async (job) => assignRider(job.payload),
-    queueDispatch: async(job) => queueDispatch(job.payload),
     dispatchOrder : async(job) => dispatchOrder(job.payload),
     riderStartDelivery : async (job) => riderStartDelivery(job.payload),
     riderPickup: async (job) => riderPickup(job.payload),

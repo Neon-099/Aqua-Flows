@@ -7,6 +7,14 @@ export const sendEmail = async (options) => {
     throw new Error('Brevo is not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.');
   }
 
+  // Brevo API v3 requires an API key (typically starts with "xkeysib-").
+  // SMTP keys (often start with "xsmtpsib-") will fail with 401 Key not found.
+  if (env.BREVO_API_KEY.startsWith('xsmtpsib-')) {
+    throw new Error(
+      'BREVO_API_KEY looks like an SMTP key (xsmtpsib-). Use a Brevo API key (xkeysib-) for the HTTP API, or switch to SMTP sending.'
+    );
+  }
+
   const payload = {
     sender: {
       name: env.BREVO_SENDER_NAME || 'AquaFlow',
@@ -36,7 +44,7 @@ export const sendEmail = async (options) => {
     if (!res.ok) {
       const body = await res.text();
       console.error('Brevo error:', res.status, body);
-      throw new Error('Email could not be sent');
+      throw new Error(`Email could not be sent (Brevo ${res.status}).`);
     }
   } catch (error) {
     console.error(error);
