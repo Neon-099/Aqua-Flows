@@ -50,3 +50,15 @@ export const updateAvailability = async (req, res, next) => {
     next(err);
   }
 };
+
+export const heartbeatRider = async (req, res, next) => {
+  try {
+    const result = await riderService.heartbeatRider({
+      user: req.user,
+      riderId: req.params.id,
+    });
+    return ok(res, result);
+  } catch (err) {
+    next(err);
+  }
+};

@@ -60,12 +60,6 @@ const orderSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  dispatch_queued_at: { type: Date, default: null },
-  dispatch_after_minutes: { type: Number, default: null },
-  dispatch_scheduled_for: { type: Date, default: null },
-  dispatched_at: { type: Date, default: null },
-  eta_minutes_min: { type: Number, default: null },
-  eta_minutes_max: { type: Number, default: null },
   eta_text: { type: String, default: null },
   eta_last_calculated_at: { type: Date, default: null },
 }, {

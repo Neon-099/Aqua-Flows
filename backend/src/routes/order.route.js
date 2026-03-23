@@ -12,7 +12,6 @@ import {
   riderStartDelivery,
   riderPickup,
   riderMarkPendingPayment,
-  queueDispatch,
   dispatchOrder,
   confirmOrder,
   autoAssignRider,
@@ -39,7 +38,6 @@ router.put('/:id/cancel', protect, authorize('customer', 'staff', 'admin'), canc
 router.put('/:id/assign_rider', protect, authorize('staff'), assignRider);
 router.put('/:id/auto_assign', protect, authorize('staff'), autoAssignRider);
 router.post('/:id/auto_assign_preview', protect, authorize('staff'), autoAssignPreview);
-router.put('/:id/queue_dispatch', protect, authorize('staff'), queueDispatch);
 router.put('/:id/dispatch', protect, authorize('staff'), dispatchOrder);
 router.put('/:id/confirm', protect, authorize('staff', 'rider'), confirmOrder);
 

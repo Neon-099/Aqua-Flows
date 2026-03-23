@@ -4,6 +4,8 @@ import { MESSAGES } from '../constants/messages.js';
 import User from '../models/User.model.js';
 import Customer from '../models/Customer.model.js';
 import Rider from '../models/Rider.model.js';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -34,6 +36,12 @@ export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const data = await authService.loginUser(email, password);
+    if (data?.role === 'rider') {
+      await Rider.findOneAndUpdate(
+        { user_id: data._id },
+        { $set: { status: 'active', last_seen_at: new Date() } }
+      );
+    }
     res.cookie('refreshToken', data.refreshToken, cookieOptions);
     res.status(200).json({
       success: true,
@@ -46,6 +54,19 @@ export const login = async (req, res, next) => {
 };
 
 export const logout = (req, res) => {
+    const authHeader = req.headers.authorization || '';
+    if (authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const decoded = jwt.verify(token, env.JWT_SECRET);
+        Rider.findOneAndUpdate(
+          { user_id: decoded?.id },
+          { $set: { status: 'inactive' } }
+        ).catch(() => {});
+      } catch {
+        // ignore token errors on logout
+      }
+    }
     res.cookie('refreshToken', '', { ...cookieOptions, maxAge: 0 });
     res.status(200).json({ success: true, message: MESSAGES.LOGOUT_SUCCESS });
 };

@@ -26,6 +26,11 @@ const riderSchema = new mongoose.Schema({
     enum: ['active', 'inactive'],
     default: 'active',
   },
+  last_seen_at: {
+    type: Date,
+    default: null,
+    index: true,
+  },
   maxCapacityGallons: {
     type: Number,
     required: true,

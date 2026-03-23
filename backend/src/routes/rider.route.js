@@ -5,6 +5,7 @@ import {
     listRiders,
     getRiderById,
     updateAvailability,
+    heartbeatRider,
 } from '../controllers/rider.controller.js'
 import {protect, authorize} from '../middlewares/auth.middleware.js'
 
@@ -14,5 +15,6 @@ router.post('/', protect, authorize('admin'), createRider);
 router.get('/', protect, authorize('staff'), listRiders);
 router.get('/:id', protect, authorize('staff', 'rider', 'admin'), getRiderById);
 router.put('/:id/availability', protect, authorize('staff', 'rider', 'admin'), updateAvailability);
+router.put('/:id/heartbeat', protect, authorize('rider', 'staff', 'admin'), heartbeatRider);
 
 export default router;

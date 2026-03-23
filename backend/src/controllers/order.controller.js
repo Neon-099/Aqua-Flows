@@ -195,18 +195,6 @@ export const riderStartDelivery = async (req, res, next) => {
   }
 };
 
-export const queueDispatch = async (req, res, next) => {
-  try {
-    const taskId = enqueueTask({
-      type: 'queueDispatch',
-      payload: {user: req.user, orderId: req.params.id, minutes: req.body?.minutes},
-    })
-    return res.status(202).json({success: true, queued: true, taskId});
-  } catch (err) {
-    next(err);
-  }
-};
-
 export const dispatchOrder = async (req, res, next) => {
   try {
     const taskId = enqueueTask({
