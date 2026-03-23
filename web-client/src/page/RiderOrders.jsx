@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import RiderOrderCard from '../components/RiderOrderCard';
 import { OrderStatus } from '../constants/staff.constants';
+import { RIDER_HEARTBEAT_INTERVAL_MS } from '../constants/rider.constants';
 import { apiRequest } from '../utils/api';
 import { formatOrderId } from '../utils/staffFormatters';
 import { useAuth } from '../contexts/AuthProvider';
@@ -65,6 +66,22 @@ const RiderOrders = () => {
       clearInterval(interval);
     };
   }, [acceptedOrderIds]);
+
+  useEffect(() => {
+    if (!user) return;
+    const riderId = user?.rider_id || user?.riderId || 'me';
+    const sendHeartbeat = async () => {
+      try {
+        await apiRequest(`/riders/${riderId}/heartbeat`, 'PUT');
+      } catch {
+        // ignore heartbeat errors
+      }
+    };
+
+    sendHeartbeat();
+    const intervalId = setInterval(sendHeartbeat, RIDER_HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [user]);
 
   const handleAction = async (orderId, actionType) => {
     try {

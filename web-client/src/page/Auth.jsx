@@ -138,7 +138,7 @@ const Auth = () => {
             {/* Name field for Sign Up */}
             {activeTab === 'signup' && (
               <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                <div className="absolute left-4 top-1/3 -translate-y-1/2 text-slate-400">
                   <Mail size={20} />
                 </div>
                 <input
@@ -160,7 +160,7 @@ const Auth = () => {
 
             {/* Email or Mobile Number */}
             <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+              <div className="absolute left-4 top-1/3 -translate-y-1/2 text-slate-400">
                 <Mail size={20} />
               </div>
               <input

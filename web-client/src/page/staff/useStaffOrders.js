@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { OrderStatus, RiderStatus } from '../../constants/staff.constants';
 import { apiRequest } from '../../utils/api';
 import { formatOrderId, getInitials } from '../../utils/staffFormatters';
+import { RIDER_HEARTBEAT_TTL_MS } from '../../constants/rider.constants';
 
 const ORDERS_PER_PAGE = 6;
 const AUTO_ASSIGN_WEIGHTS = { load: 0.5, orders: 0.4, capacity: 0.1, distance: 0.0 };
@@ -92,17 +93,23 @@ const useStaffOrders = () => {
       const maxCapacity = Number(rider.maxCapacityGallons ?? 0);
       const currentLoad = Number(rider.currentLoadGallons ?? 0);
       const remaining = Math.max(0, maxCapacity - currentLoad);
+      const lastSeenAt = rider?.last_seen_at || rider?.lastSeenAt || null;
+      const lastSeenMs = lastSeenAt ? Date.parse(lastSeenAt) : null;
+      const isFresh = lastSeenMs ? Date.now() - lastSeenMs <= RIDER_HEARTBEAT_TTL_MS : false;
+      const isActive = rider?.status === 'active' && isFresh;
       return {
         id: rider._id,
         name,
         initials: getInitials(name),
-        status: rider.status === 'active' ? RiderStatus.AVAILABLE : RiderStatus.OFFLINE,
-        avatarColor: rider.status === 'active' ? 'bg-blue-500' : 'bg-gray-400',
+        status: isActive ? RiderStatus.AVAILABLE : RiderStatus.OFFLINE,
+        avatarColor: isActive ? 'bg-blue-500' : 'bg-gray-400',
         currentOrders: rider.activeOrdersCount || 0,
         maxCapacityGallons: maxCapacity,
         currentLoadGallons: currentLoad,
         remainingCapacityGallons: remaining,
         isAtCapacity: maxCapacity > 0 && currentLoad >= maxCapacity,
+        lastSeenAt,
+        isActive,
       };
     });
 
@@ -115,7 +122,7 @@ const useStaffOrders = () => {
       ]);
       if (!isMountedRef.current) return;
       const nextOrders = mapOrders(ordersRes);
-      const nextRiders = mapRiders(ridersRes);
+      const nextRiders = mapRiders(ridersRes).filter((rider) => rider.isActive);
       setOrders(nextOrders);
       setRiders(nextRiders);
       try {

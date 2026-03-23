@@ -1,0 +1,2 @@
+export const RIDER_HEARTBEAT_TTL_MS = 2 * 60 * 1000;
+export const RIDER_HEARTBEAT_INTERVAL_MS = 60 * 1000;

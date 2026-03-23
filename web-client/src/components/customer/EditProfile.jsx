@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff, LocationEdit, Lock, Mail, PhoneCallIcon, User2 } from 'lucide-react';
+import { LocationEdit, Mail, PhoneCallIcon, User2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthProvider';
 
 const ADDRESS_OPTIONS = [
@@ -20,8 +20,6 @@ const ADDRESS_OPTIONS = [
 
 const EditProfile = ({ isOpen, onClose }) => {
   const { user, updateProfile } = useAuth();
-  const [showPassword, setShowPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -29,9 +27,6 @@ const EditProfile = ({ isOpen, onClose }) => {
     name: '',
     phone: '',
     address: '',
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: '',
   });
 
   useEffect(() => {
@@ -40,9 +35,6 @@ const EditProfile = ({ isOpen, onClose }) => {
       name: user?.name || '',
       phone: user?.phone || '',
       address: user?.address || '',
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
     });
     setError('');
     setSuccess('');
@@ -53,10 +45,7 @@ const EditProfile = ({ isOpen, onClose }) => {
     return (
       formData.name !== (user?.name || '') ||
       formData.phone !== (user?.phone || '') ||
-      formData.address !== (user?.address || '') ||
-      !!formData.newPassword ||
-      !!formData.currentPassword ||
-      !!formData.confirmPassword
+      formData.address !== (user?.address || '')
     );
   }, [formData, user?.name, user?.phone, user?.address]);
 
@@ -98,29 +87,11 @@ const EditProfile = ({ isOpen, onClose }) => {
       return;
     }
 
-    if (formData.newPassword || formData.confirmPassword || formData.currentPassword) {
-      if (!formData.currentPassword) {
-        setError('Enter your current password to set a new password.');
-        return;
-      }
-      if (formData.newPassword.length < 6) {
-        setError('New password must be at least 6 characters.');
-        return;
-      }
-      if (formData.newPassword !== formData.confirmPassword) {
-        setError('Passwords do not match.');
-        return;
-      }
-    }
-
     setLoading(true);
     const payload = {
       name: formData.name,
       phone: formData.phone,
       address: formData.address,
-      currentPassword: formData.currentPassword || undefined,
-      newPassword: formData.newPassword || undefined,
-      confirmPassword: formData.confirmPassword || undefined,
     };
 
     const res = await updateProfile(payload);
@@ -239,69 +210,6 @@ const EditProfile = ({ isOpen, onClose }) => {
                   </option>
                 ))}
               </select>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 mb-4">
-              Change password
-            </p>
-            <div className="grid md:grid-row-3 gap-4">
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Lock size={18} />
-                </div>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="currentPassword"
-                  value={formData.currentPassword}
-                  onChange={handleChange}
-                  placeholder="Current password"
-                  className="w-full pl-11 pr-10 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Lock size={18} />
-                </div>
-                <input
-                  type={showNewPassword ? 'text' : 'password'}
-                  name="newPassword"
-                  value={formData.newPassword}
-                  onChange={handleChange}
-                  placeholder="New password"
-                  className="w-full pl-11 pr-10 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Lock size={18} />
-                </div>
-                <input
-                  type={showNewPassword ? 'text' : 'password'}
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  placeholder="Confirm password"
-                  className="w-full pl-11 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 font-medium bg-white"
-                />
-              </div>
             </div>
           </div>
 

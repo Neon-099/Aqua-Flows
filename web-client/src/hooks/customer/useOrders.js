@@ -125,7 +125,21 @@ const useOrders = () => {
     });
   };
 
+  const requirePhoneForGcash = () => {
+    const phone = normalizeNullableText(user?.phone);
+    if (!phone) {
+      const message = 'Phone number is required for GCash payments. Please update your profile.';
+      setPaymentError(message);
+      toast.error(message);
+      return false;
+    }
+    return true;
+  };
+
   const finalizePaidGcashOrder = async (pending) => {
+    if (!requirePhoneForGcash()) {
+      throw new Error('Phone number is required for GCash payments.');
+    }
     const pendingQty = Number(pending?.quantity || 0);
     const pendingGallonType = pending?.gallon_type;
     const pendingTotal = Number(pending?.total_amount || 0);
@@ -176,6 +190,9 @@ const useOrders = () => {
 
     try {
       if (paymentMethod === 'gcash') {
+        if (!requirePhoneForGcash()) {
+          return;
+        }
         const pendingRaw = localStorage.getItem(GCASH_PENDING_KEY);
         const pending = pendingRaw ? JSON.parse(pendingRaw) : null;
         const canFinalize =

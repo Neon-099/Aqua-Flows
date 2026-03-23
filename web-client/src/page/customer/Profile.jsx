@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import Header from '../../components/Header';
 import EditProfile from '../../components/customer/EditProfile';
+import ChangePasswordModal from '../../components/customer/ChangePasswordModal';
 import { Skeleton, SkeletonGroup } from '../../components/WireframeSkeleton';
 import useProfile from '../../hooks/customer/useProfile';
 
@@ -31,6 +32,7 @@ const Profile = () => {
     isEditOpen,
     setIsEditOpen,
   } = useProfile();
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
 
   if (loading) {
     return (
@@ -164,6 +166,13 @@ const Profile = () => {
                   >
                     Edit Profile
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPasswordOpen(true)}
+                    className="bg-white hover:bg-slate-50 text-slate-700 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-[0.2em] border border-slate-200"
+                  >
+                    Change Password
+                  </button>
                 </div>
               </div>
             </div>
@@ -245,6 +254,7 @@ const Profile = () => {
         </div>
       </main>
       <EditProfile isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} />
+      <ChangePasswordModal isOpen={isPasswordOpen} onClose={() => setIsPasswordOpen(false)} />
     </div>
   );
 };
